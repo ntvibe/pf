@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./api.js";
-import { clearApiUrl } from "./storage.js";
+import { clearApiUrl, getStoredApiUrl, isValidAppsScriptUrl, setApiUrl } from "./storage.js";
 import { rows, setRows, computeTotals } from "./state.js";
 import { esc, formatEUR } from "./format.js";
 import { initChart, renderChart } from "./ui/chart.js";
@@ -14,8 +14,30 @@ const chartMode = document.getElementById("chartMode");
 const btnAdd = document.getElementById("btnAdd");
 const btnReload = document.getElementById("btnReload");
 const btnChangeApi = document.getElementById("btnChangeApi");
+const btnSaveApi = document.getElementById("btnSaveApi");
+const connectPanel = document.getElementById("connectPanel");
+const apiUrlInput = document.getElementById("apiUrlInput");
 
 function setStatus(t){ elStatus.textContent = t; }
+
+function setControlsEnabled(enabled){
+  btnAdd.disabled = !enabled;
+  btnReload.disabled = !enabled;
+}
+
+function showConnectPanel({ prefill = "" } = {}){
+  connectPanel.hidden = false;
+  apiUrlInput.value = prefill;
+  apiUrlInput.classList.remove("invalid");
+  setControlsEnabled(false);
+  setStatus("Connect your Apps Script URL to load data.");
+  requestAnimationFrame(() => apiUrlInput.focus());
+}
+
+function hideConnectPanel(){
+  connectPanel.hidden = true;
+  setControlsEnabled(true);
+}
 
 function renderHeader(){
   const { total } = computeTotals(rows);
@@ -83,7 +105,22 @@ async function reload({ focusNew=false } = {}){
 
 btnAdd.onclick = () => addRow().catch(err => setStatus("Add failed ❌ " + (err.message || err)));
 btnReload.onclick = () => reload();
-btnChangeApi.onclick = async () => { clearApiUrl(); await reload(); };
+btnChangeApi.onclick = () => {
+  showConnectPanel({ prefill: getStoredApiUrl() });
+};
+
+btnSaveApi.onclick = async () => {
+  const cleaned = apiUrlInput.value.trim();
+  if(!cleaned || !isValidAppsScriptUrl(cleaned)){
+    apiUrlInput.classList.add("invalid");
+    setStatus("Paste a valid Apps Script /exec URL.");
+    return;
+  }
+  apiUrlInput.classList.remove("invalid");
+  setApiUrl(cleaned);
+  hideConnectPanel();
+  await reload();
+};
 
 initChart({
   chartEl,
@@ -100,4 +137,14 @@ if("serviceWorker" in navigator){
   }
 }
 
-reload();
+const storedUrl = getStoredApiUrl();
+if(storedUrl && isValidAppsScriptUrl(storedUrl)){
+  hideConnectPanel();
+  reload();
+}else{
+  if(storedUrl && !isValidAppsScriptUrl(storedUrl)){
+    clearApiUrl();
+  }
+  listRoot.textContent = "Connect your Apps Script URL to load data.";
+  showConnectPanel({ prefill: "" });
+}

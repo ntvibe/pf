@@ -9,24 +9,19 @@ export function isValidAppsScriptUrl(url){
   }
 }
 
+export function getStoredApiUrl(){
+  return localStorage.getItem(STORAGE_API) || "";
+}
+
 export async function getApiUrl(force=false){
-  let url = (!force && localStorage.getItem(STORAGE_API)) || "";
-  while(true){
-    if(url && !force) return url;
-    const input = prompt("Paste Apps Script Web App URL (ends with /exec):", url || "https://script.google.com/macros/s/XXXXX/exec");
-    if(input === null){
-      if(url) return url;
-      throw new Error("No API URL provided.");
-    }
-    const cleaned = input.trim();
-    if(!cleaned) continue;
-    if(!isValidAppsScriptUrl(cleaned)){
-      alert("Invalid Apps Script URL. Paste the full /exec link.");
-      continue;
-    }
-    localStorage.setItem(STORAGE_API, cleaned);
-    return cleaned;
-  }
+  const url = (!force && localStorage.getItem(STORAGE_API)) || "";
+  if(!url) throw new Error("No API URL provided.");
+  if(!isValidAppsScriptUrl(url)) throw new Error("Invalid Apps Script URL.");
+  return url;
+}
+
+export function setApiUrl(url){
+  localStorage.setItem(STORAGE_API, url);
 }
 
 export function clearApiUrl(){

@@ -1,4 +1,4 @@
-const CACHE_NAME = "pf-dashboard-v1";
+const CACHE_NAME = "pf-dashboard-v2";
 const PRECACHE_URLS = [
   "./",
   "./index.html",
@@ -35,7 +35,11 @@ self.addEventListener("fetch", (event) => {
   if(request.method !== "GET") return;
 
   const url = new URL(request.url);
-  if(url.hostname === "script.google.com" || url.hostname === "script.googleusercontent.com"){
+  const isAppsScript = url.hostname === "script.google.com"
+    || url.hostname === "script.googleusercontent.com"
+    || url.pathname.includes("/exec");
+
+  if(isAppsScript){
     event.respondWith(fetch(request));
     return;
   }
