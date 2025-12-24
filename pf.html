@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Personal Finance Dashboard (v1 + Chart)</title>
+
+  <!-- ECharts (interactive + animated) -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+
+  <style>
+    :root{
+      --bd:#e6e6e6; --bg:#fff; --muted:#666; --ok:#1b5e20; --err:#b00020;
+      --chip:#f3f4f6; --focus:#cfe3ff; --warn:#fff3cd; --warnbd:#ffe69c;
+    }
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;padding:16px;background:#fafafa}
+    .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+    button{padding:8px 10px;border:1px solid #ddd;background:#fff;border-radius:12px;cursor:pointer}
+    button:hover{background:#f6f6f6}
+    .status{margin-left:auto;opacity:.85;font-size:13px}
+    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:12px}
+    .card{background:var(--bg);border:1px solid var(--bd);border-radius:16px;padding:10px}
+    .card .label{font-size:12px;color:var(--muted)}
+    .card .value{font-size:18px;font-weight:800;margin-top:4px}
+    .wrap{background:var(--bg);border:1px solid var(--bd);border-radius:16px;overflow:hidden}
+    table{width:100%;border-collapse:collapse}
+    th,td{border-bottom:1px solid var(--bd);padding:10px;vertical-align:top}
+    th{background:#fbfbfb;font-weight:700;text-align:left;position:sticky;top:0;z-index:1}
+    tr:last-child td{border-bottom:0}
+    .col-actions{width:110px;white-space:nowrap}
+    .mini{padding:6px 8px;border-radius:12px}
+    .muted{color:var(--muted);font-size:12px}
+    .error{color:var(--err);white-space:pre-wrap;padding:12px}
+    .right{text-align:right}
+    .cellmeta{display:inline-flex;align-items:center;gap:6px;width:100%}
+    .dot{width:8px;height:8px;border-radius:999px;display:inline-block;background:#bbb;flex:none}
+    .dot.ok{background:var(--ok)}
+    .dot.err{background:var(--err)}
+    .dot.saving{background:#888}
+    select{
+      width:100%; padding:6px 8px; border:1px solid var(--bd); border-radius:10px;
+      background:#fff; font:inherit;
+    }
+    input{
+      width:100%; padding:6px 8px; border:1px solid var(--bd); border-radius:10px;
+      background:#fff; font:inherit;
+    }
+    input.invalid{background:var(--warn);box-shadow:inset 0 0 0 1px var(--warnbd)}
+    .pill{background:var(--chip);border:1px solid var(--bd);padding:6px 10px;border-radius:999px;font-size:12px}
+    .chartbar{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--bd);flex-wrap:wrap;
+    }
+    .chartbar strong{font-size:14px}
+    .chartbar .spacer{margin-left:auto}
+    .chartbar select{width:auto}
+  </style>
+</head>
+
+<body>
+  <div class="top">
+    <button id="btnAdd">+ Add Asset</button>
+    <button id="btnReload">Reload</button>
+    <button id="btnChangeApi">Change API URL</button>
+    <span class="pill">Edits save on blur / change</span>
+    <span class="status" id="status">—</span>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <!-- Chart -->
+  <div class="wrap" style="margin-bottom:12px;">
+    <div class="chartbar">
+      <strong>Allocation</strong>
+      <span class="muted">Live</span>
+      <span class="spacer"></span>
+      <label class="muted" style="display:flex;align-items:center;gap:6px;">
+        Group:
+        <select id="chartMode">
+          <option value="asset" selected>By Asset</option>
+          <option value="type">By Type</option>
+        </select>
+      </label>
+    </div>
+    <div id="chart" style="height:360px;"></div>
+  </div>
+
+  <!-- Table -->
+  <div class="wrap">
+    <div id="root" class="muted" style="padding:12px;">Loading…</div>
+  </div>
+
+  <script>
+    const STORAGE_API = "apps_script_api_url_v1";
+    const TYPES = ["Bank","Crypto","Gold","Stocks","Cash","Other"];
+
+    const elStatus = document.getElementById("status");
+    const elCards = document.getElementById("cards");
+    const root = document.getElementById("root");
+
+    const btnAdd = document.getElementById("btnAdd");
+    const btnReload = document.getElementById("btnReload");
+    const btnChangeApi = document.getElementById("btnChangeApi");
+
+    let rows = [];
+    let chart = null;
+
+    function setStatus(t){ elStatus.textContent = t; }
+
+    function esc(s){
+      return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function isValidAppsScriptUrl(url){
+      try{
+        const u = new URL(url);
+        return (u.hostname === "script.google.com" || u.hostname === "script.googleusercontent.com") && url.length > 20;
+      }catch{ return false; }
+    }
+
+    async function getApiUrl(force=false){
+      let url = (!force && localStorage.getItem(STORAGE_API)) || "";
+      while(true){
+        if(url && !force) return url;
+        const input = prompt("Paste Apps Script Web App URL (ends with /exec):", url || "https://script.google.com/macros/s/XXXXX/exec");
+        if(input === null){
+          if(url) return url;
+          throw new Error("No API URL provided.");
+        }
+        const cleaned = input.trim();
+        if(!cleaned) continue;
+        if(!isValidAppsScriptUrl(cleaned)){
+          alert("Invalid Apps Script URL. Paste the full /exec link.");
+          continue;
+        }
+        localStorage.setItem(STORAGE_API, cleaned);
+        return cleaned;
+      }
+    }
+
+    function toNumber(v){
+      if(typeof v === "number") return v;
+      const s = String(v ?? "").trim();
+      if(!s) return 0;
+      const cleaned = s.replace(/\s/g,'').replace(/€/g,'').replace(/,/g,'.').replace(/[^\d.-]/g,'');
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : NaN;
+    }
+
+    function formatEUR(n){
+      if(!Number.isFinite(n)) return "";
+      return new Intl.NumberFormat("en-US", { style:"currency", currency:"EUR", maximumFractionDigits: 2 }).format(n);
+    }
+
+    function computeTotals(rows){
+      let total = 0;
+      const byType = new Map();
+      for(const r of rows){
+        const type = String(r.Type ?? "Other") || "Other";
+        const n = toNumber(r.Value);
+        const val = Number.isFinite(n) ? n : 0;
+        total += val;
+        byType.set(type, (byType.get(type) || 0) + val);
+      }
+      return { total, byType };
+    }
+
+    function renderCards(){
+      const { total, byType } = computeTotals(rows);
+      const preferred = ["Bank","Crypto","Gold"];
+      const items = [];
+
+      items.push({ label: "Total Net Worth", value: formatEUR(total) });
+
+      for(const t of preferred){
+        items.push({ label: t, value: formatEUR(byType.get(t) || 0) });
+      }
+
+      for(const [t, v] of [...byType.entries()].sort((a,b)=>b[1]-a[1])){
+        if(preferred.includes(t)) continue;
+        items.push({ label: t, value: formatEUR(v) });
+      }
+
+      elCards.innerHTML = items.map(it => `
+        <div class="card">
+          <div class="label">${esc(it.label)}</div>
+          <div class="value">${esc(it.value || "—")}</div>
+        </div>
+      `).join("");
+    }
+
+    async function apiGet(){
+      const api = await getApiUrl(false);
+      const url = api + (api.includes("?") ? "&" : "?") + "t=" + Date.now();
+      const res = await fetch(url, { cache:"no-store" });
+      const json = await res.json();
+      if(!json || json.success !== true) throw new Error(json?.error || "Load failed");
+      return Array.isArray(json.data) ? json.data : [];
+    }
+
+    async function apiPost(payload){
+      const api = await getApiUrl(false);
+      // ✅ text/plain avoids CORS preflight with Apps Script
+      const res = await fetch(api, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify(payload)
+      });
+      const json = await res.json();
+      if(!json || json.success !== true) throw new Error(json?.error || "Request failed");
+      return json;
+    }
+
+    async function addRow(){
+      setStatus("Adding…");
+      await apiPost({ action:"addRow", type:"Other", currency:"EUR" });
+      await reload({ focusNew:true });
+    }
+
+    async function deleteRowById(id){
+      setStatus("Deleting…");
+      await apiPost({ action:"deleteRow", id });
+      await reload();
+    }
+
+    async function saveCell(id, column, value){
+      await apiPost({ action:"updateCell", id, column, value });
+    }
+
+    // ===== Chart =====
+    function buildChartData(mode){
+      const map = new Map();
+      for(const r of rows){
+        const valN = toNumber(r.Value);
+        if(!Number.isFinite(valN) || valN <= 0) continue;
+
+        const key = mode === "type"
+          ? (String(r.Type ?? "Other") || "Other")
+          : (String(r.Name ?? "").trim() || "Unnamed");
+
+        map.set(key, (map.get(key) || 0) + valN);
+      }
+
+      const sorted = [...map.entries()].sort((a,b)=>b[1]-a[1]);
+      const TOP = 12;
+      if(sorted.length > TOP){
+        const top = sorted.slice(0, TOP);
+        const rest = sorted.slice(TOP).reduce((s, [,v]) => s + v, 0);
+        top.push(["Other", rest]);
+        return top.map(([name, value]) => ({ name, value }));
+      }
+      return sorted.map(([name, value]) => ({ name, value }));
+    }
+
+    function renderChart(){
+      const el = document.getElementById("chart");
+      if(!el || typeof echarts === "undefined") return;
+
+      if(!chart){
+        chart = echarts.init(el, null, { renderer: "canvas" });
+        window.addEventListener("resize", () => chart && chart.resize());
+      }
+
+      const mode = document.getElementById("chartMode")?.value || "asset";
+      const data = buildChartData(mode);
+      const total = data.reduce((s, d) => s + (d.value || 0), 0);
+      const totalLabel = total > 0 ? formatEUR(total) : "—";
+
+      chart.setOption({
+        animation: true,
+        animationDuration: 900,
+        animationEasing: "cubicOut",
+        backgroundColor: "transparent",
+        tooltip: {
+          trigger: "item",
+          valueFormatter: (v) => formatEUR(v)
+        },
+        legend: {
+          type: "scroll",
+          bottom: 0,
+          left: 10,
+          right: 10
+        },
+        graphic: [
+          {
+            type: "text",
+            left: "center",
+            top: "44%",
+            style: {
+              text: totalLabel,
+              fontSize: 18,
+              fontWeight: 800,
+              fill: "#111",
+              textAlign: "center"
+            }
+          },
+          {
+            type: "text",
+            left: "center",
+            top: "52%",
+            style: {
+              text: "Total",
+              fontSize: 12,
+              fill: "#666",
+              textAlign: "center"
+            }
+          }
+        ],
+        series: [
+          {
+            name: "Allocation",
+            type: "pie",
+            radius: ["55%", "78%"],
+            center: ["50%", "45%"],
+            padAngle: 2,
+            avoidLabelOverlap: true,
+            itemStyle: { borderRadius: 8, borderColor: "#fff", borderWidth: 2 },
+            label: {
+              show: true,
+              formatter: (p) => {
+                const pct = total > 0 ? Math.round((p.value / total) * 100) : 0;
+                return `${p.name}\n${pct}%`;
+              }
+            },
+            emphasis: {
+              scale: true,
+              scaleSize: 10,
+              label: { fontWeight: "bold" }
+            },
+            data
+          }
+        ]
+      }, true);
+    }
+
+    // ===== Table =====
+    function cellDot(state){
+      const cls = state === "ok" ? "ok" : state === "err" ? "err" : state === "saving" ? "saving" : "";
+      return `<span class="dot ${cls}"></span>`;
+    }
+
+    function renderTable(){
+      if(!rows.length){
+        root.innerHTML = `<div class="muted" style="padding:12px;">No data.</div>`;
+        return;
+      }
+
+      const cols = ["Name","Type","Value","Currency"];
+
+      const thead = `
+        <thead>
+          <tr>
+            <th class="col-actions">Actions</th>
+            ${cols.map(c => `<th>${esc(c)}</th>`).join("")}
+          </tr>
+        </thead>
+      `;
+
+      const tbody = `
+        <tbody>
+          ${rows.map((r, idx) => {
+            const id = String(r.ID ?? "");
+            const type = TYPES.includes(String(r.Type)) ? String(r.Type) : "Other";
+            const valN = toNumber(r.Value);
+            const valInvalid = (String(r.Value ?? "").trim() !== "" && !Number.isFinite(valN));
+            const currency = String(r.Currency ?? "EUR") || "EUR";
+
+            return `
+              <tr data-idx="${idx}" data-id="${esc(id)}">
+                <td class="col-actions">
+                  <button class="mini" data-action="delete">🗑️</button>
+                </td>
+
+                <td>
+                  <div class="cellmeta">
+                    ${cellDot("idle")}
+                    <input data-kind="name" type="text" value="${esc(r.Name ?? "")}" placeholder="e.g. Erste Bank, BTC, Gold" />
+                  </div>
+                </td>
+
+                <td>
+                  <div class="cellmeta">
+                    ${cellDot("idle")}
+                    <select data-kind="type">
+                      ${TYPES.map(t => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
+                    </select>
+                  </div>
+                </td>
+
+                <td class="right">
+                  <div class="cellmeta" style="justify-content:flex-end;">
+                    ${cellDot("idle")}
+                    <input data-kind="value" inputmode="decimal" class="${valInvalid ? "invalid" : ""}" type="text" value="${esc(r.Value ?? "")}" placeholder="e.g. 1200" />
+                  </div>
+                </td>
+
+                <td>
+                  <div class="cellmeta">
+                    ${cellDot("idle")}
+                    <input data-kind="currency" type="text" value="${esc(currency)}" placeholder="EUR" />
+                  </div>
+                </td>
+              </tr>
+            `;
+          }).join("")}
+        </tbody>
+      `;
+
+      root.innerHTML = `<table>${thead}${tbody}</table>`;
+
+      const table = root.querySelector("table");
+
+      function setDot(rowEl, kind, state){
+        const cell = rowEl.querySelector(`[data-kind="${kind}"]`);
+        const meta = cell?.closest(".cellmeta");
+        const dot = meta?.querySelector(".dot");
+        if(!dot) return;
+        dot.classList.remove("ok","err","saving");
+        if(state === "ok") dot.classList.add("ok");
+        else if(state === "err") dot.classList.add("err");
+        else if(state === "saving") dot.classList.add("saving");
+      }
+
+      function markValueValidity(input){
+        const s = String(input.value ?? "").trim();
+        if(!s){ input.classList.remove("invalid"); return; }
+        const n = toNumber(s);
+        if(Number.isFinite(n)) input.classList.remove("invalid");
+        else input.classList.add("invalid");
+      }
+
+      async function saveField(rowEl, kind, columnName, rawValue, { coerceNumber=false } = {}){
+        const id = rowEl.dataset.id;
+        const idx = Number(rowEl.dataset.idx);
+        if(!id || !Number.isFinite(idx)) return;
+
+        setStatus("Saving…");
+        setDot(rowEl, kind, "saving");
+
+        try{
+          let valueToSave = rawValue;
+          if(coerceNumber){
+            const n = toNumber(rawValue);
+            if(Number.isFinite(n)) valueToSave = n;
+          }
+
+          await saveCell(id, columnName, valueToSave);
+
+          if(rows[idx]) rows[idx][columnName] = valueToSave;
+
+          renderCards();
+          renderChart();
+
+          setDot(rowEl, kind, "ok");
+          setStatus("Saved ✅");
+        }catch(err){
+          console.error(err);
+          setDot(rowEl, kind, "err");
+          setStatus("Save failed ❌ " + (err.message || err));
+
+          const input = rowEl.querySelector(`[data-kind="${kind}"]`);
+          if(input && rows[idx]){
+            input.value = String(rows[idx][columnName] ?? "");
+          }
+          if(kind === "value") markValueValidity(input);
+        }
+      }
+
+      table.addEventListener("click", async (e) => {
+        const btn = e.target.closest("button[data-action]");
+        if(!btn) return;
+        const rowEl = btn.closest("tr");
+        const id = rowEl?.dataset?.id || "";
+        if(!id) return;
+
+        if(btn.dataset.action === "delete"){
+          btn.disabled = true;
+          try{ await deleteRowById(id); }
+          catch(err){
+            console.error(err);
+            setStatus("Delete failed ❌ " + (err.message || err));
+            btn.disabled = false;
+          }
+        }
+      });
+
+      table.addEventListener("change", async (e) => {
+        const rowEl = e.target.closest("tr");
+        if(!rowEl) return;
+        const el = e.target;
+
+        if(el.matches('select[data-kind="type"]')){
+          await saveField(rowEl, "type", "Type", el.value);
+        }
+      });
+
+      table.addEventListener("input", (e) => {
+        const el = e.target;
+        if(el.matches('input[data-kind="value"]')){
+          markValueValidity(el);
+        }
+      });
+
+      table.addEventListener("focusin", (e) => {
+        const el = e.target;
+        if(!(el instanceof HTMLElement)) return;
+        if(el.matches('input[data-kind], select[data-kind]')){
+          el.dataset.before = el.value;
+        }
+      });
+
+      table.addEventListener("focusout", async (e) => {
+        const el = e.target;
+        if(!(el instanceof HTMLElement)) return;
+        if(!el.matches('input[data-kind], select[data-kind]')) return;
+
+        const rowEl = el.closest("tr");
+        if(!rowEl) return;
+
+        const kind = el.getAttribute("data-kind");
+        const before = el.dataset.before ?? "";
+        const after = el.value ?? "";
+        delete el.dataset.before;
+
+        if(after === before) return;
+
+        if(kind === "name"){
+          await saveField(rowEl, "name", "Name", after);
+        } else if(kind === "currency"){
+          await saveField(rowEl, "currency", "Currency", after.toUpperCase().trim() || "EUR");
+        } else if(kind === "value"){
+          const s = String(after).trim();
+          if(!s){
+            await saveField(rowEl, "value", "Value", "");
+            return;
+          }
+          const n = toNumber(s);
+          if(!Number.isFinite(n)){
+            el.classList.add("invalid");
+            setDot(rowEl, "value", "err");
+            setStatus("Invalid number ❌ (not saved)");
+
+            const idx = Number(rowEl.dataset.idx);
+            el.value = String(rows[idx]?.Value ?? "");
+            markValueValidity(el);
+            return;
+          }
+          el.classList.remove("invalid");
+          await saveField(rowEl, "value", "Value", s, { coerceNumber:true });
+        }
+      });
+    }
+
+    async function reload({ focusNew=false } = {}){
+      try{
+        setStatus("Loading…");
+        root.textContent = "Loading…";
+
+        const data = await apiGet();
+        rows = data.map(r => ({
+          ID: r.ID ?? "",
+          Name: r.Name ?? "",
+          Type: r.Type ?? "Other",
+          Value: r.Value ?? "",
+          Currency: r.Currency ?? "EUR",
+          Notes: r.Notes ?? "",
+          UpdatedAt: r.UpdatedAt ?? "",
+          _row: r._row
+        }));
+
+        renderCards();
+        renderChart();
+        renderTable();
+
+        setStatus(`Loaded ${rows.length} asset(s)`);
+
+        if(focusNew){
+          requestAnimationFrame(() => {
+            const last = root.querySelector("tbody tr:last-child input[data-kind='name']");
+            if(last) last.focus();
+          });
+        }
+      }catch(err){
+        console.error(err);
+        root.innerHTML = `<div class="error">❌ ${esc(err.message || err)}</div>`;
+        elCards.innerHTML = "";
+        setStatus("Error");
+      }
+    }
+
+    btnAdd.onclick = () => addRow().catch(err => setStatus("Add failed ❌ " + (err.message || err)));
+    btnReload.onclick = () => reload();
+    btnChangeApi.onclick = async () => { localStorage.removeItem(STORAGE_API); await reload(); };
+
+    document.getElementById("chartMode").addEventListener("change", renderChart);
+
+    reload();
+  </script>
+</body>
+</html>
