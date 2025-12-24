@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Personal Finance Dashboard (v1 + Chart)</title>
+
+  <!-- ECharts (interactive + animated) -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+
+<body>
+  <div class="top">
+    <button id="btnAdd">+ Add Asset</button>
+    <button id="btnReload">Reload</button>
+    <button id="btnChangeApi">Change API URL</button>
+    <span class="pill">Edits save on blur / change</span>
+    <span class="status" id="status">—</span>
+  </div>
+
+  <div class="cards" id="cards"></div>
+
+  <!-- Chart -->
+  <div class="wrap" style="margin-bottom:12px;">
+    <div class="chartbar">
+      <strong>Allocation</strong>
+      <span class="muted">Live</span>
+      <span class="spacer"></span>
+      <label class="muted" style="display:flex;align-items:center;gap:6px;">
+        Group:
+        <select id="chartMode">
+          <option value="asset" selected>By Asset</option>
+          <option value="type">By Type</option>
+        </select>
+      </label>
+    </div>
+    <div id="chart" style="height:360px;"></div>
+  </div>
+
+  <!-- Table -->
+  <div class="wrap">
+    <div id="root" class="muted" style="padding:12px;">Loading…</div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
