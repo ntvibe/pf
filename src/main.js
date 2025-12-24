@@ -13,7 +13,6 @@ import {
   detectColumns,
   normalizeRow,
   computeTotals,
-  listAssets,
   loadCache,
   saveCache,
   enqueueAddRow,
@@ -36,7 +35,6 @@ const chartDots = document.getElementById("chartDots");
 const timelineFilters = document.getElementById("timelineFilters");
 
 const btnAdd = document.getElementById("btnAdd");
-const btnAddAsset = document.getElementById("btnAddAsset");
 const btnReload = document.getElementById("btnReload");
 const btnChangeApi = document.getElementById("btnChangeApi");
 const btnSaveApi = document.getElementById("btnSaveApi");
@@ -44,16 +42,11 @@ const btnCloseConnect = document.getElementById("btnCloseConnect");
 const connectPanel = document.getElementById("connectPanel");
 const apiUrlInput = document.getElementById("apiUrlInput");
 const themeSelect = document.getElementById("themeSelect");
-const assetDialog = document.getElementById("assetDialog");
-const assetDialogForm = document.getElementById("assetDialogForm");
-const assetNameInput = document.getElementById("assetNameInput");
 const transactionDialog = document.getElementById("transactionDialog");
 const transactionDialogForm = document.getElementById("transactionDialogForm");
-const transactionAssetInput = document.getElementById("transactionAssetInput");
 const transactionTypeSelect = document.getElementById("transactionTypeSelect");
 const transactionValueInput = document.getElementById("transactionValueInput");
 const transactionDateInput = document.getElementById("transactionDateInput");
-const transactionAssetList = document.getElementById("transactionAssetList");
 
 let syncState = "Idle";
 let statusNote = "";
@@ -98,7 +91,6 @@ function updateSyncBadge(){
 
 function setControlsEnabled(enabled){
   btnAdd.disabled = !enabled;
-  if(btnAddAsset) btnAddAsset.disabled = !enabled;
   btnReload.disabled = !enabled;
 }
 
@@ -134,8 +126,6 @@ function renderAll({ focusRowId = null } = {}){
     onDelete: deleteRowById,
     onUpdate: updateCell,
     onAddEntry: openTransactionDialog,
-    onRenameAsset: renameAssetGroup,
-    onDeleteAsset: deleteAssetGroup,
     onRowsChanged: () => {
       renderHeader();
       renderChart(rows);
@@ -173,14 +163,7 @@ function createEmptyRow({ assetName = "", entryName = "" } = {}){
   };
 }
 
-function openAssetDialog(){
-  if(!assetDialog) return;
-  assetNameInput.value = "";
-  assetDialog.showModal();
-  requestAnimationFrame(() => assetNameInput.focus());
-}
-
-function setTransactionDialogDefaults({ assetName = "", typeName = "" } = {}){
+function setTransactionDialogDefaults({ typeName = "" } = {}){
   if(transactionTypeSelect){
     transactionTypeSelect.value = typeName || "Other";
   }
@@ -191,38 +174,20 @@ function setTransactionDialogDefaults({ assetName = "", typeName = "" } = {}){
   if(transactionDateInput){
     transactionDateInput.value = toLocalDateTimeInputValue(new Date());
   }
-  if(transactionAssetInput){
-    transactionAssetInput.value = assetName || "";
-  }
 }
 
-function refreshTransactionAssetOptions(){
-  if(!transactionAssetList) return;
-  const assets = listAssets(rows);
-  transactionAssetList.innerHTML = assets.map((asset) => `<option value="${esc(asset)}"></option>`).join("");
-}
-
-function openTransactionDialog({ assetName = "", typeName = "" } = {}){
+function openTransactionDialog({ typeName = "" } = {}){
   if(!transactionDialog) return;
-  refreshTransactionAssetOptions();
-  setTransactionDialogDefaults({ assetName, typeName });
+  setTransactionDialogDefaults({ typeName });
   transactionDialog.showModal();
-  requestAnimationFrame(() => transactionAssetInput.focus());
+  requestAnimationFrame(() => transactionTypeSelect?.focus());
 }
 
-async function addAssetGroup(assetName){
-  const nextName = String(assetName || "").trim() || "New Asset";
-  const newRow = createEmptyRow({ assetName: nextName, entryName: "" });
-  newRow.Value = "0";
-  setRows([...rows, newRow]);
-  setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
-  markDirty();
-  renderAll({ focusRowId: newRow.ID });
-}
-
-async function addEntryToAsset({ assetName, typeName, value, dateTime } = {}){
+async function addEntryToAsset({ typeName, value, dateTime } = {}){
+  const assetName = String(typeName || "Other");
   const newRow = createEmptyRow({ assetName, entryName: "" });
   if(typeName) newRow.Type = typeName;
+  newRow.Asset = assetName;
   if(value != null) newRow.Value = value;
   if(dateTime) newRow.Date = dateTime;
   setRows([...rows, newRow]);
@@ -246,43 +211,6 @@ async function updateCell(id, column, value){
   }
   setDirtyQueue(enqueueUpdateCell(dirtyQueue, { id, column, value }));
   markDirty();
-}
-
-async function renameAssetGroup(previousName, nextName){
-  if(!previousName || previousName === nextName) return;
-  const col = columnConfig.asset === "Asset" ? "Asset" : "Name";
-  const updatedRows = rows.map((row) => {
-    if(String(row.Asset) === String(previousName)){
-      return { ...row, Asset: nextName };
-    }
-    return row;
-  });
-  setRows(updatedRows);
-  let queue = dirtyQueue;
-  updatedRows.forEach((row) => {
-    if(String(row.Asset) === String(nextName)){
-      queue = enqueueUpdateCell(queue, { id: row.ID, column: col, value: nextName });
-    }
-  });
-  setDirtyQueue(queue);
-  markDirty();
-  renderAll();
-}
-
-async function deleteAssetGroup(assetName){
-  const name = String(assetName || "").trim();
-  if(!name) return;
-  const nextRows = rows.filter((row) => String(row.Asset) !== String(name));
-  let queue = dirtyQueue;
-  rows.forEach((row) => {
-    if(String(row.Asset) === String(name)){
-      queue = enqueueDeleteRow(queue, row.ID);
-    }
-  });
-  setRows(nextRows);
-  setDirtyQueue(queue);
-  markDirty();
-  renderAll();
 }
 
 function mapUpdateColumn(column){
@@ -462,9 +390,6 @@ function handleBackgroundSync(){
 }
 
 btnAdd.onclick = () => openTransactionDialog();
-if(btnAddAsset){
-  btnAddAsset.onclick = () => openAssetDialog();
-}
 btnReload.onclick = () => syncNow({ forceRefresh: true });
 btnChangeApi.onclick = () => {
   showConnectPanel({ prefill: getStoredApiUrl() });
@@ -487,32 +412,9 @@ btnSaveApi.onclick = async () => {
   await refreshFromServer({ allowReplaceWhenDirty: true });
 };
 
-if(assetDialogForm){
-  assetDialogForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const name = assetNameInput.value.trim();
-    if(!name){
-      assetNameInput.classList.add("invalid");
-      setStatus("Enter an asset name.");
-      return;
-    }
-    assetNameInput.classList.remove("invalid");
-    await addAssetGroup(name);
-    assetDialog.close();
-  });
-}
-
 if(transactionDialogForm){
   transactionDialogForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const assetName = transactionAssetInput.value.trim();
-    if(!assetName){
-      transactionAssetInput.classList.add("invalid");
-      setStatus("Select or enter an asset name.");
-      return;
-    }
-    transactionAssetInput.classList.remove("invalid");
-
     const valueRaw = transactionValueInput.value.trim();
     if(!valueRaw){
       transactionValueInput.classList.add("invalid");
@@ -529,7 +431,7 @@ if(transactionDialogForm){
 
     const typeName = transactionTypeSelect.value || "Other";
     const dateTime = transactionDateInput.value || toLocalDateTimeInputValue(new Date());
-    await addEntryToAsset({ assetName, typeName, value: valueRaw, dateTime });
+    await addEntryToAsset({ typeName, value: valueRaw, dateTime });
     transactionDialog.close();
   });
 }
