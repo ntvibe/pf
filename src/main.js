@@ -1,14 +1,13 @@
 import { apiGet, apiPost } from "./api.js";
 import { clearApiUrl } from "./storage.js";
-import { rows, setRows } from "./state.js";
-import { esc } from "./format.js";
-import { renderCards } from "./ui/cards.js";
+import { rows, setRows, computeTotals } from "./state.js";
+import { esc, formatEUR } from "./format.js";
 import { initChart, renderChart } from "./ui/chart.js";
-import { renderTable } from "./ui/table.js";
+import { renderList } from "./ui/list.js";
 
 const elStatus = document.getElementById("status");
-const elCards = document.getElementById("cards");
-const root = document.getElementById("root");
+const elTotal = document.getElementById("totalValue");
+const listRoot = document.getElementById("assetList");
 const chartEl = document.getElementById("chart");
 const chartMode = document.getElementById("chartMode");
 
@@ -18,16 +17,21 @@ const btnChangeApi = document.getElementById("btnChangeApi");
 
 function setStatus(t){ elStatus.textContent = t; }
 
+function renderHeader(){
+  const { total } = computeTotals(rows);
+  elTotal.textContent = total > 0 ? formatEUR(total) : "€0.00";
+}
+
 function renderAll({ focusNew=false } = {}){
-  renderCards(rows, elCards);
+  renderHeader();
   renderChart(rows);
-  renderTable(rows, {
-    root,
+  renderList(rows, {
+    root: listRoot,
     setStatus,
     onDelete: deleteRowById,
     onSave: saveCell,
     onRowsChanged: () => {
-      renderCards(rows, elCards);
+      renderHeader();
       renderChart(rows);
     },
     focusNew
@@ -53,7 +57,7 @@ async function saveCell(id, column, value){
 async function reload({ focusNew=false } = {}){
   try{
     setStatus("Loading…");
-    root.textContent = "Loading…";
+    listRoot.textContent = "Loading…";
 
     const data = await apiGet();
     setRows(data.map(r => ({
@@ -72,8 +76,7 @@ async function reload({ focusNew=false } = {}){
     setStatus(`Loaded ${rows.length} asset(s)`);
   }catch(err){
     console.error(err);
-    root.innerHTML = `<div class="error">❌ ${esc(err.message || err)}</div>`;
-    elCards.innerHTML = "";
+    listRoot.innerHTML = `<div class="error">❌ ${esc(err.message || err)}</div>`;
     setStatus("Error");
   }
 }
@@ -87,5 +90,14 @@ initChart({
   modeSelectEl: chartMode,
   onModeChange: () => renderChart(rows)
 });
+
+if("serviceWorker" in navigator){
+  const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  if(location.protocol === "https:" || isLocalhost){
+    navigator.serviceWorker.register("./sw.js").catch(err => {
+      console.warn("Service worker registration failed", err);
+    });
+  }
+}
 
 reload();
