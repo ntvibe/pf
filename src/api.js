@@ -9,13 +9,15 @@ export async function apiGet(){
   return Array.isArray(json.data) ? json.data : [];
 }
 
-export async function apiPost(payload){
+export async function apiPost(payload, { keepalive = false, signal } = {}){
   const api = await getApiUrl(false);
   // ✅ text/plain avoids CORS preflight with Apps Script
   const res = await fetch(api, {
     method: "POST",
     headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(payload),
+    keepalive,
+    signal
   });
   const json = await res.json();
   if(!json || json.success !== true) throw new Error(json?.error || "Request failed");

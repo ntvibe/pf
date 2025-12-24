@@ -56,8 +56,8 @@
     <section class="panel">
       <div class="panel-header">
         <div>
-          <strong>Allocation</strong>
-          <div class="muted">Live breakdown</div>
+          <strong>Charts</strong>
+          <div class="muted">Swipe for timeline</div>
         </div>
         <label class="toggle">
           <span>Group</span>
@@ -67,14 +67,26 @@
           </select>
         </label>
       </div>
-      <div id="chart" class="chart"></div>
+      <div class="chart-pager">
+        <div class="chart-pages" id="chartPages">
+          <div class="chart-page">
+            <div id="chartPie" class="chart"></div>
+          </div>
+          <div class="chart-page">
+            <div class="chart-subtitle">Net worth over time</div>
+            <div id="chartTimeline" class="chart"></div>
+            <div class="timeline-filters" id="timelineFilters"></div>
+          </div>
+        </div>
+        <div class="pager-dots" id="chartDots"></div>
+      </div>
     </section>
 
     <section class="panel">
       <div class="panel-header">
         <div>
           <strong>Assets</strong>
-          <div class="muted">Edits save on blur / change</div>
+          <div class="muted">Local-first edits (sync later)</div>
         </div>
       </div>
       <div id="assetList" class="asset-list">Loading…</div>
@@ -83,8 +95,9 @@
     <footer class="bottom-toolbar" role="toolbar" aria-label="Actions">
       <div class="toolbar-inner">
         <div class="toolbar-actions">
-          <button id="btnReload" class="icon-btn" type="button" aria-label="Reload">
-            <span class="material-symbols-rounded" aria-hidden="true">refresh</span>
+          <button id="btnReload" class="icon-btn" type="button" aria-label="Sync">
+            <span class="material-symbols-rounded" aria-hidden="true">sync</span>
+            <span class="icon-badge" aria-hidden="true"></span>
           </button>
           <button id="btnChangeApi" class="icon-btn" type="button" aria-label="Change API URL">
             <span class="material-symbols-rounded" aria-hidden="true">link</span>

@@ -1,10 +1,12 @@
 import { TYPES } from "../config.js";
-import { esc, toNumber } from "../format.js";
+import { esc, toNumber, formatEUR } from "../format.js";
+import { getAssetName } from "../state.js";
 
-function cellDot(state){
-  const cls = state === "ok" ? "ok" : state === "err" ? "err" : state === "saving" ? "saving" : "";
-  return `<span class="dot ${cls}"></span>`;
-}
+const expandedAssets = new Set();
+let listenersAttached = false;
+let boundRoot = null;
+let currentRows = [];
+let currentOptions = {};
 
 function markValueValidity(input){
   const s = String(input.value ?? "").trim();
@@ -14,199 +16,266 @@ function markValueValidity(input){
   else input.classList.add("invalid");
 }
 
+function buildGroups(rows){
+  const map = new Map();
+  for(const row of rows){
+    const assetName = getAssetName(row);
+    if(!map.has(assetName)){
+      map.set(assetName, { assetName, rows: [], total: 0 });
+    }
+    const group = map.get(assetName);
+    group.rows.push(row);
+    const val = toNumber(row.Value);
+    group.total += Number.isFinite(val) ? val : 0;
+  }
+  return [...map.values()].sort((a,b) => a.assetName.localeCompare(b.assetName));
+}
+
 export function renderList(rows, {
   root,
   setStatus,
   onDelete,
-  onSave,
+  onUpdate,
+  onAddEntry,
+  onRenameAsset,
   onRowsChanged,
-  focusNew=false
+  supportsEntries = true,
+  supportsDate = true,
+  focusRowId = null
 }){
+  currentRows = rows;
+  currentOptions = {
+    root,
+    setStatus,
+    onDelete,
+    onUpdate,
+    onAddEntry,
+    onRenameAsset,
+    onRowsChanged,
+    supportsEntries,
+    supportsDate,
+    focusRowId
+  };
   if(!rows.length){
     root.innerHTML = `<div class="muted">No data.</div>`;
     return;
   }
 
-  root.innerHTML = rows.map((r, idx) => {
-    const id = String(r.ID ?? "");
-    const type = TYPES.includes(String(r.Type)) ? String(r.Type) : "Other";
-    const valN = toNumber(r.Value);
-    const valInvalid = (String(r.Value ?? "").trim() !== "" && !Number.isFinite(valN));
-    const currency = String(r.Currency ?? "EUR") || "EUR";
+  const groups = buildGroups(rows);
+  const focusGroup = focusRowId
+    ? getAssetName(rows.find((row) => String(row.ID) === String(focusRowId)) || {})
+    : null;
+
+  root.innerHTML = groups.map((group) => {
+    const isExpanded = expandedAssets.has(group.assetName) || group.assetName === focusGroup;
+    const chevron = isExpanded ? "expand_less" : "expand_more";
+    const totalLabel = group.total > 0 ? formatEUR(group.total) : "€0.00";
 
     return `
-      <article class="asset-card" data-idx="${idx}" data-id="${esc(id)}">
-        <div class="asset-header">
-          <div class="asset-title">Asset</div>
-          <button class="delete-btn" data-action="delete" type="button" aria-label="Delete asset">
-            <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+      <article class="asset-group" data-asset="${esc(group.assetName)}" data-expanded="${isExpanded}">
+        <div class="asset-group-header">
+          <button class="asset-toggle" data-action="toggle" type="button" aria-label="Toggle ${esc(group.assetName)}">
+            <span class="material-symbols-rounded" aria-hidden="true">${chevron}</span>
           </button>
-        </div>
-
-        <div class="field">
-          <label>Name</label>
-          <div class="state-pill">${cellDot("idle")}<span class="muted">Updates on blur</span></div>
-          <input data-kind="name" type="text" value="${esc(r.Name ?? "")}" placeholder="e.g. Erste Bank, BTC, Gold" />
-        </div>
-
-        <div class="field">
-          <label>Type</label>
-          <div class="state-pill">${cellDot("idle")}<span class="muted">Updates on change</span></div>
-          <select data-kind="type">
-            ${TYPES.map(t => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
-          </select>
-        </div>
-
-        <div class="field-row">
-          <div class="field">
-            <label>Value</label>
-            <div class="state-pill">${cellDot("idle")}<span class="muted">EUR</span></div>
-            <input data-kind="value" inputmode="decimal" class="value-input ${valInvalid ? "invalid" : ""}" type="text" value="${esc(r.Value ?? "")}" placeholder="e.g. 1200" />
+          <div class="asset-group-info">
+            <input class="asset-name-input" data-kind="asset" type="text" value="${esc(group.assetName)}" placeholder="Asset name" />
+            <div class="muted">${group.rows.length} entr${group.rows.length === 1 ? "y" : "ies"}</div>
           </div>
-          <div class="field">
-            <label>Currency</label>
-            <div class="state-pill">${cellDot("idle")}<span class="muted">ISO</span></div>
-            <input data-kind="currency" class="currency-input" type="text" value="${esc(currency)}" placeholder="EUR" />
+          <div class="asset-group-total">${totalLabel}</div>
+        </div>
+        <div class="asset-group-body" ${isExpanded ? "" : "hidden"}>
+          <div class="entry-list">
+            ${group.rows.map((row) => {
+              const id = String(row.ID ?? "");
+              const type = TYPES.includes(String(row.Type)) ? String(row.Type) : "Other";
+              const currency = String(row.Currency ?? "EUR") || "EUR";
+              const valN = toNumber(row.Value);
+              const valInvalid = (String(row.Value ?? "").trim() !== "" && !Number.isFinite(valN));
+              const dateValue = String(row.Date ?? "").trim() || new Date().toISOString().slice(0, 10);
+
+              return `
+                <div class="entry-card" data-id="${esc(id)}">
+                  <div class="entry-header">
+                    <div class="entry-title">Entry</div>
+                    <button class="delete-btn" data-action="delete-entry" type="button" aria-label="Delete entry">
+                      <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                    </button>
+                  </div>
+                  <div class="field">
+                    <label>Entry</label>
+                    <input data-kind="entry" type="text" value="${esc(row.Entry ?? "")}" placeholder="e.g. Main account" ${supportsEntries ? "" : "disabled"} />
+                  </div>
+                  <div class="field">
+                    <label>Type</label>
+                    <select data-kind="type">
+                      ${TYPES.map((t) => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
+                    </select>
+                  </div>
+                  <div class="field-row">
+                    <div class="field">
+                      <label>Value</label>
+                      <input data-kind="value" inputmode="decimal" class="value-input ${valInvalid ? "invalid" : ""}" type="text" value="${esc(row.Value ?? "")}" placeholder="e.g. 1200" />
+                    </div>
+                    <div class="field">
+                      <label>Currency</label>
+                      <input data-kind="currency" class="currency-input" type="text" value="${esc(currency)}" placeholder="EUR" />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>Date</label>
+                    <input data-kind="date" type="date" value="${esc(dateValue)}" ${supportsDate ? "" : "disabled"} />
+                  </div>
+                </div>
+              `;
+            }).join("")}
           </div>
+          <button class="secondary-btn" data-action="add-entry" type="button" ${supportsEntries ? "" : "disabled"}>
+            <span class="material-symbols-rounded" aria-hidden="true">add</span>
+            Add entry
+          </button>
         </div>
       </article>
     `;
   }).join("");
 
-  function setDot(rowEl, kind, state){
-    const cell = rowEl.querySelector(`[data-kind="${kind}"]`);
-    const meta = cell?.closest(".field");
-    const dot = meta?.querySelector(".dot");
-    if(!dot) return;
-    dot.classList.remove("ok","err","saving");
-    if(state === "ok") dot.classList.add("ok");
-    else if(state === "err") dot.classList.add("err");
-    else if(state === "saving") dot.classList.add("saving");
-  }
+  if(!listenersAttached || boundRoot !== root){
+    listenersAttached = true;
+    boundRoot = root;
 
-  async function saveField(rowEl, kind, columnName, rawValue, { coerceNumber=false } = {}){
-    const id = rowEl.dataset.id;
-    const idx = Number(rowEl.dataset.idx);
-    if(!id || !Number.isFinite(idx)) return;
+    root.addEventListener("click", async (event) => {
+      const btn = event.target.closest("button[data-action]");
+      if(!btn) return;
 
-    setStatus("Saving…");
-    setDot(rowEl, kind, "saving");
+      const groupEl = btn.closest(".asset-group");
+      const assetName = groupEl?.dataset?.asset || "";
 
-    try{
-      let valueToSave = rawValue;
-      if(coerceNumber){
-        const n = toNumber(rawValue);
-        if(Number.isFinite(n)) valueToSave = n;
-      }
-
-      await onSave(id, columnName, valueToSave);
-
-      if(rows[idx]) rows[idx][columnName] = valueToSave;
-      if(onRowsChanged) onRowsChanged(rows);
-
-      setDot(rowEl, kind, "ok");
-      setStatus("Saved");
-    }catch(err){
-      console.error(err);
-      setDot(rowEl, kind, "err");
-      setStatus("Save failed ❌ " + (err.message || err));
-
-      const input = rowEl.querySelector(`[data-kind="${kind}"]`);
-      if(input && rows[idx]){
-        input.value = String(rows[idx][columnName] ?? "");
-      }
-      if(kind === "value") markValueValidity(input);
-    }
-  }
-
-  root.addEventListener("click", async (e) => {
-    const btn = e.target.closest("button[data-action]");
-    if(!btn) return;
-    const rowEl = btn.closest(".asset-card");
-    const id = rowEl?.dataset?.id || "";
-    if(!id) return;
-
-    if(btn.dataset.action === "delete"){
-      btn.disabled = true;
-      try{ await onDelete(id); }
-      catch(err){
-        console.error(err);
-        setStatus("Delete failed ❌ " + (err.message || err));
-        btn.disabled = false;
-      }
-    }
-  });
-
-  root.addEventListener("change", async (e) => {
-    const rowEl = e.target.closest(".asset-card");
-    if(!rowEl) return;
-    const el = e.target;
-
-    if(el.matches('select[data-kind="type"]')){
-      await saveField(rowEl, "type", "Type", el.value);
-    }
-  });
-
-  root.addEventListener("input", (e) => {
-    const el = e.target;
-    if(el.matches('input[data-kind="value"]')){
-      markValueValidity(el);
-    }
-  });
-
-  root.addEventListener("focusin", (e) => {
-    const el = e.target;
-    if(!(el instanceof HTMLElement)) return;
-    if(el.matches('input[data-kind], select[data-kind]')){
-      el.dataset.before = el.value;
-    }
-  });
-
-  root.addEventListener("focusout", async (e) => {
-    const el = e.target;
-    if(!(el instanceof HTMLElement)) return;
-    if(!el.matches('input[data-kind], select[data-kind]')) return;
-
-    const rowEl = el.closest(".asset-card");
-    if(!rowEl) return;
-
-    const kind = el.getAttribute("data-kind");
-    const before = el.dataset.before ?? "";
-    const after = el.value ?? "";
-    delete el.dataset.before;
-
-    if(after === before) return;
-
-    if(kind === "name"){
-      await saveField(rowEl, "name", "Name", after);
-    } else if(kind === "currency"){
-      await saveField(rowEl, "currency", "Currency", after.toUpperCase().trim() || "EUR");
-    } else if(kind === "value"){
-      const s = String(after).trim();
-      if(!s){
-        await saveField(rowEl, "value", "Value", "");
+      if(btn.dataset.action === "toggle"){
+        if(groupEl){
+          const expanded = groupEl.dataset.expanded === "true";
+          if(expanded){
+            expandedAssets.delete(assetName);
+          }else{
+            expandedAssets.add(assetName);
+          }
+          renderList(currentRows, currentOptions);
+        }
         return;
       }
-      const n = toNumber(s);
-      if(!Number.isFinite(n)){
-        el.classList.add("invalid");
-        setDot(rowEl, "value", "err");
-        setStatus("Invalid number ❌ (not saved)");
 
-        const idx = Number(rowEl.dataset.idx);
-        el.value = String(rows[idx]?.Value ?? "");
+      if(btn.dataset.action === "add-entry"){
+        if(onAddEntry) await onAddEntry(assetName);
+        return;
+      }
+
+      if(btn.dataset.action === "delete-entry"){
+        const entryEl = btn.closest(".entry-card");
+        const id = entryEl?.dataset?.id || "";
+        if(!id) return;
+        btn.disabled = true;
+        try{
+          await onDelete(id);
+          if(onRowsChanged) onRowsChanged(currentRows);
+        }catch(err){
+          console.error(err);
+          setStatus("Delete failed ❌ " + (err.message || err));
+          btn.disabled = false;
+        }
+      }
+    });
+
+    root.addEventListener("change", async (event) => {
+      const entryEl = event.target.closest(".entry-card");
+      if(!entryEl) return;
+      const id = entryEl.dataset.id;
+      const el = event.target;
+
+      if(el.matches('select[data-kind="type"]')){
+        await onUpdate(id, "Type", el.value);
+        if(onRowsChanged) onRowsChanged(currentRows);
+      }
+    });
+
+    root.addEventListener("input", (event) => {
+      const el = event.target;
+      if(el.matches('input[data-kind="value"]')){
         markValueValidity(el);
+      }
+    });
+
+    root.addEventListener("focusin", (event) => {
+      const el = event.target;
+      if(!(el instanceof HTMLElement)) return;
+      if(el.matches('input[data-kind], select[data-kind]')){
+        el.dataset.before = el.value;
+      }
+    });
+
+    root.addEventListener("focusout", async (event) => {
+      const el = event.target;
+      if(!(el instanceof HTMLElement)) return;
+      if(!el.matches('input[data-kind], select[data-kind]')) return;
+
+      const before = el.dataset.before ?? "";
+      const after = el.value ?? "";
+      delete el.dataset.before;
+
+      if(after === before) return;
+
+      if(el.matches('input[data-kind="asset"]')){
+        const groupEl = el.closest(".asset-group");
+        const assetName = groupEl?.dataset?.asset || "";
+        const nextName = String(after).trim() || "Unnamed";
+        if(expandedAssets.has(assetName)){
+          expandedAssets.delete(assetName);
+          expandedAssets.add(nextName);
+        }
+        await onRenameAsset(assetName, nextName);
+        if(onRowsChanged) onRowsChanged(currentRows);
         return;
       }
-      el.classList.remove("invalid");
-      await saveField(rowEl, "value", "Value", s, { coerceNumber:true });
-    }
-  });
 
-  if(focusNew){
+      const entryEl = el.closest(".entry-card");
+      if(!entryEl) return;
+      const id = entryEl.dataset.id;
+
+      const kind = el.getAttribute("data-kind");
+
+      if(kind === "entry"){
+        if(!supportsEntries) return;
+        await onUpdate(id, "Entry", after.trim());
+      } else if(kind === "currency"){
+        await onUpdate(id, "Currency", after.toUpperCase().trim() || "EUR");
+      } else if(kind === "value"){
+        const s = String(after).trim();
+        if(!s){
+          await onUpdate(id, "Value", "");
+          if(onRowsChanged) onRowsChanged(currentRows);
+          return;
+        }
+        const n = toNumber(s);
+        if(!Number.isFinite(n)){
+          el.classList.add("invalid");
+          setStatus("Invalid number ❌ (not saved)");
+          const row = currentRows.find((r) => String(r.ID) === String(id));
+          el.value = String(row?.Value ?? "");
+          markValueValidity(el);
+          return;
+        }
+        el.classList.remove("invalid");
+        await onUpdate(id, "Value", s);
+      } else if(kind === "date"){
+        if(!supportsDate) return;
+        await onUpdate(id, "Date", after);
+      }
+
+      if(onRowsChanged) onRowsChanged(currentRows);
+    });
+  }
+
+  if(focusRowId){
     requestAnimationFrame(() => {
-      const last = root.querySelector(".asset-card:last-child input[data-kind='name']");
-      if(last) last.focus();
+      const target = root.querySelector(`.entry-card[data-id="${CSS.escape(String(focusRowId))}"] input[data-kind="entry"]`);
+      if(target) target.focus();
     });
   }
 }

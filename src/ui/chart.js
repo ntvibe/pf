@@ -1,19 +1,40 @@
-import { buildChartData } from "../state.js";
+import { buildChartData, buildTimelineSeries, listAssets } from "../state.js";
 import { formatEUR } from "../format.js";
 
-let chart = null;
+let pieChart = null;
+let timelineChart = null;
 let modeSelect = null;
+let pagesEl = null;
+let dotsEl = null;
+let filterEl = null;
+let currentPage = 0;
+let currentAssetFilter = "All";
+let lastRows = [];
 let resizeHandlerAttached = false;
 
-export function initChart({ chartEl, modeSelectEl, onModeChange }){
-  if(!chartEl || typeof echarts === "undefined") return;
+export function initChart({
+  pieEl,
+  timelineEl,
+  modeSelectEl,
+  pagesElement,
+  dotsElement,
+  filterElement,
+  onModeChange
+}){
+  if(!pieEl || !timelineEl || typeof echarts === "undefined") return;
 
-  if(!chart){
-    chart = echarts.init(chartEl, null, { renderer: "canvas" });
+  if(!pieChart){
+    pieChart = echarts.init(pieEl, null, { renderer: "canvas" });
+  }
+  if(!timelineChart){
+    timelineChart = echarts.init(timelineEl, null, { renderer: "canvas" });
   }
 
   if(!resizeHandlerAttached){
-    window.addEventListener("resize", () => chart && chart.resize());
+    window.addEventListener("resize", () => {
+      pieChart && pieChart.resize();
+      timelineChart && timelineChart.resize();
+    });
     resizeHandlerAttached = true;
   }
 
@@ -23,16 +44,114 @@ export function initChart({ chartEl, modeSelectEl, onModeChange }){
       if(onModeChange) onModeChange(modeSelect.value);
     });
   }
+
+  pagesEl = pagesElement || pagesEl;
+  dotsEl = dotsElement || dotsEl;
+  filterEl = filterElement || filterEl;
+
+  if(pagesEl){
+    setupPager(pagesEl);
+  }
+
+  if(dotsEl){
+    dotsEl.addEventListener("click", (event) => {
+      const btn = event.target.closest("button[data-index]");
+      if(!btn) return;
+      const idx = Number(btn.dataset.index);
+      if(Number.isFinite(idx)) setPage(idx);
+    });
+  }
 }
 
-export function renderChart(rows, mode){
-  if(!chart) return;
+function setupPager(container){
+  let startX = 0;
+  let startY = 0;
+  let dragging = false;
+
+  container.addEventListener("touchstart", (event) => {
+    const touch = event.touches[0];
+    if(!touch) return;
+    startX = touch.clientX;
+    startY = touch.clientY;
+    dragging = true;
+  }, { passive: true });
+
+  container.addEventListener("touchmove", (event) => {
+    if(!dragging) return;
+    const touch = event.touches[0];
+    if(!touch) return;
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if(Math.abs(dx) > Math.abs(dy)){
+      event.preventDefault();
+    }
+  }, { passive: false });
+
+  container.addEventListener("touchend", (event) => {
+    if(!dragging) return;
+    dragging = false;
+    const touch = event.changedTouches[0];
+    if(!touch) return;
+    const dx = touch.clientX - startX;
+    const dy = touch.clientY - startY;
+    if(Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
+    if(dx < 0){
+      setPage(Math.min(1, currentPage + 1));
+    }else{
+      setPage(Math.max(0, currentPage - 1));
+    }
+  });
+}
+
+function setPage(index){
+  currentPage = index;
+  if(pagesEl){
+    pagesEl.style.transform = `translateX(-${index * 100}%)`;
+  }
+  updateDots();
+  if(pieChart && timelineChart){
+    setTimeout(() => {
+      pieChart.resize();
+      timelineChart.resize();
+    }, 240);
+  }
+}
+
+function updateDots(){
+  if(!dotsEl) return;
+  dotsEl.innerHTML = [0,1].map((idx) => (
+    `<button class="pager-dot ${idx === currentPage ? "active" : ""}" type="button" data-index="${idx}" aria-label="Chart page ${idx + 1}"></button>`
+  )).join("");
+}
+
+function renderAssetFilter(rows){
+  if(!filterEl) return;
+  const assets = listAssets(rows);
+  const options = ["All", ...assets];
+  if(!options.includes(currentAssetFilter)){
+    currentAssetFilter = "All";
+  }
+  filterEl.innerHTML = options.map((asset) => (
+    `<button class="filter-chip ${asset === currentAssetFilter ? "active" : ""}" type="button" data-asset="${asset}">${asset}</button>`
+  )).join("");
+
+  filterEl.querySelectorAll("button[data-asset]").forEach((btn) => {
+    btn.onclick = () => {
+      currentAssetFilter = btn.dataset.asset || "All";
+      renderTimeline(lastRows);
+      renderAssetFilter(lastRows);
+    };
+  });
+}
+
+function renderPie(rows, mode){
+  if(!pieChart) return;
   const currentMode = mode || modeSelect?.value || "asset";
   const data = buildChartData(currentMode, rows);
   const total = data.reduce((s, d) => s + (d.value || 0), 0);
   const totalLabel = total > 0 ? formatEUR(total) : "—";
 
-  chart.setOption({
+  pieChart.setOption({
     animation: true,
     animationDuration: 900,
     animationEasing: "cubicOut",
@@ -97,4 +216,55 @@ export function renderChart(rows, mode){
       }
     ]
   }, true);
+}
+
+function renderTimeline(rows){
+  if(!timelineChart) return;
+  const seriesData = buildTimelineSeries(rows, { assetFilter: currentAssetFilter });
+  const dates = seriesData.map((d) => d.date);
+  const values = seriesData.map((d) => d.value);
+
+  timelineChart.setOption({
+    animation: true,
+    animationDuration: 800,
+    animationEasing: "cubicOut",
+    backgroundColor: "transparent",
+    tooltip: {
+      trigger: "axis",
+      valueFormatter: (v) => formatEUR(v)
+    },
+    grid: { top: 24, left: 12, right: 18, bottom: 30, containLabel: true },
+    xAxis: {
+      type: "category",
+      data: dates,
+      boundaryGap: false,
+      axisLabel: { color: "#64748b" },
+      axisLine: { lineStyle: { color: "#cbd5f5" } }
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: "#64748b" },
+      splitLine: { lineStyle: { color: "#e2e8f0" } }
+    },
+    series: [
+      {
+        name: "Net Worth",
+        type: "line",
+        smooth: true,
+        data: values,
+        showSymbol: false,
+        lineStyle: { width: 3, color: "#2563eb" },
+        areaStyle: { color: "rgba(37, 99, 235, 0.15)" }
+      }
+    ]
+  }, true);
+}
+
+export function renderChart(rows, mode){
+  if(!pieChart || !timelineChart) return;
+  lastRows = rows;
+  renderPie(rows, mode);
+  renderTimeline(rows);
+  renderAssetFilter(rows);
+  updateDots();
 }
