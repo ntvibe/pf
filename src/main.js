@@ -1,7 +1,25 @@
 import { apiGet, apiPost } from "./api.js";
 import { STORAGE_THEME } from "./config.js";
 import { clearApiUrl, getStoredApiUrl, isValidAppsScriptUrl, setApiUrl } from "./storage.js";
-import { rows, setRows, computeTotals } from "./state.js";
+import {
+  rows,
+  setRows,
+  dirtyQueue,
+  setDirtyQueue,
+  meta,
+  setMeta,
+  columnConfig,
+  setColumnConfig,
+  detectColumns,
+  normalizeRow,
+  computeTotals,
+  loadCache,
+  saveCache,
+  enqueueAddRow,
+  enqueueUpdateCell,
+  enqueueDeleteRow,
+  isTempId
+} from "./state.js";
 import { esc, formatEUR } from "./format.js";
 import { initChart, renderChart } from "./ui/chart.js";
 import { renderList } from "./ui/list.js";
@@ -9,8 +27,12 @@ import { renderList } from "./ui/list.js";
 const elStatus = document.getElementById("status");
 const elTotal = document.getElementById("totalValue");
 const listRoot = document.getElementById("assetList");
-const chartEl = document.getElementById("chart");
+const chartPieEl = document.getElementById("chartPie");
+const chartTimelineEl = document.getElementById("chartTimeline");
 const chartMode = document.getElementById("chartMode");
+const chartPages = document.getElementById("chartPages");
+const chartDots = document.getElementById("chartDots");
+const timelineFilters = document.getElementById("timelineFilters");
 
 const btnAdd = document.getElementById("btnAdd");
 const btnReload = document.getElementById("btnReload");
@@ -21,7 +43,46 @@ const connectPanel = document.getElementById("connectPanel");
 const apiUrlInput = document.getElementById("apiUrlInput");
 const themeSelect = document.getElementById("themeSelect");
 
-function setStatus(t){ elStatus.textContent = t; }
+let syncState = "Idle";
+let statusNote = "";
+let syncTimer = null;
+
+function formatTime(ts){
+  if(!ts) return "";
+  const date = new Date(ts);
+  if(Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function updateStatus(){
+  const parts = [syncState];
+  if(meta.lastSyncAt){
+    parts.push(`Last sync ${formatTime(meta.lastSyncAt)}`);
+  }
+  if(statusNote){
+    parts.push(statusNote);
+  }
+  elStatus.textContent = parts.join(" • ");
+}
+
+function setStatus(note){
+  statusNote = note || "";
+  updateStatus();
+}
+
+function setSyncState(state){
+  syncState = state;
+  updateStatus();
+  updateSyncBadge();
+}
+
+function updateSyncBadge(){
+  if(syncState === "Dirty" || syncState === "Error"){
+    btnReload.classList.add("dirty");
+  }else{
+    btnReload.classList.remove("dirty");
+  }
+}
 
 function setControlsEnabled(enabled){
   btnAdd.disabled = !enabled;
@@ -51,67 +112,291 @@ function renderHeader(){
   elTotal.textContent = total > 0 ? formatEUR(total) : "€0.00";
 }
 
-function renderAll({ focusNew=false } = {}){
+function renderAll({ focusRowId = null } = {}){
   renderHeader();
   renderChart(rows);
   renderList(rows, {
     root: listRoot,
     setStatus,
     onDelete: deleteRowById,
-    onSave: saveCell,
+    onUpdate: updateCell,
+    onAddEntry: addEntryToAsset,
+    onRenameAsset: renameAssetGroup,
     onRowsChanged: () => {
       renderHeader();
       renderChart(rows);
+      saveCache();
     },
-    focusNew
+    supportsEntries: Boolean(columnConfig.entry),
+    supportsDate: columnConfig.date === "Date",
+    focusRowId
   });
 }
 
-async function addRow(){
-  setStatus("Adding…");
-  await apiPost({ action:"addRow", type:"Other", currency:"EUR" });
-  await reload({ focusNew:true });
+function markDirty(){
+  if(dirtyQueue.length){
+    setSyncState("Dirty");
+  }else if(meta.lastSyncAt){
+    setSyncState("Synced");
+  }else{
+    setSyncState("Idle");
+  }
+  saveCache();
+}
+
+function createEmptyRow({ assetName = "", entryName = "" } = {}){
+  const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return {
+    ID: tempId,
+    Asset: assetName,
+    Entry: entryName,
+    Type: "Other",
+    Value: "",
+    Currency: "EUR",
+    Date: new Date().toISOString().slice(0, 10),
+    Notes: "",
+    UpdatedAt: "",
+    _row: ""
+  };
+}
+
+async function addAssetGroup(){
+  const newRow = createEmptyRow({ assetName: "New Asset", entryName: "" });
+  setRows([...rows, newRow]);
+  setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
+  markDirty();
+  renderAll({ focusRowId: newRow.ID });
+}
+
+async function addEntryToAsset(assetName){
+  const newRow = createEmptyRow({ assetName, entryName: "" });
+  setRows([...rows, newRow]);
+  setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
+  markDirty();
+  renderAll({ focusRowId: newRow.ID });
 }
 
 async function deleteRowById(id){
-  setStatus("Deleting…");
-  await apiPost({ action:"deleteRow", id });
-  await reload();
+  const nextRows = rows.filter((r) => String(r.ID) !== String(id));
+  setRows(nextRows);
+  setDirtyQueue(enqueueDeleteRow(dirtyQueue, id));
+  markDirty();
+  renderAll();
 }
 
-async function saveCell(id, column, value){
-  await apiPost({ action:"updateCell", id, column, value });
+async function updateCell(id, column, value){
+  const target = rows.find((r) => String(r.ID) === String(id));
+  if(target){
+    target[column] = value;
+  }
+  setDirtyQueue(enqueueUpdateCell(dirtyQueue, { id, column, value }));
+  markDirty();
 }
 
-async function reload({ focusNew=false } = {}){
+async function renameAssetGroup(previousName, nextName){
+  if(!previousName || previousName === nextName) return;
+  const col = columnConfig.asset === "Asset" ? "Asset" : "Name";
+  const updatedRows = rows.map((row) => {
+    if(String(row.Asset) === String(previousName)){
+      return { ...row, Asset: nextName };
+    }
+    return row;
+  });
+  setRows(updatedRows);
+  let queue = dirtyQueue;
+  updatedRows.forEach((row) => {
+    if(String(row.Asset) === String(nextName)){
+      queue = enqueueUpdateCell(queue, { id: row.ID, column: col, value: nextName });
+    }
+  });
+  setDirtyQueue(queue);
+  markDirty();
+  renderAll();
+}
+
+function mapUpdateColumn(column){
+  if(column === "Asset") return columnConfig.asset === "Asset" ? "Asset" : "Name";
+  if(column === "Entry") return columnConfig.entry || "Entry";
+  if(column === "Date") return columnConfig.date || "Date";
+  return column;
+}
+
+async function applyQueueOperation(op, { keepalive = false } = {}){
+  if(op.op === "updateCell"){
+    const column = mapUpdateColumn(op.column);
+    return apiPost({ action:"updateCell", id: op.id, column, value: op.value }, { keepalive });
+  }
+  if(op.op === "deleteRow"){
+    return apiPost({ action:"deleteRow", id: op.id }, { keepalive });
+  }
+  if(op.op === "addRow"){
+    return apiPost({ action:"addRow", ...op.payload }, { keepalive });
+  }
+  return null;
+}
+
+function replaceTempId(tempId, newId){
+  if(!newId) return;
+  const updated = rows.map((row) => {
+    if(String(row.ID) === String(tempId)){
+      return { ...row, ID: newId };
+    }
+    return row;
+  });
+  setRows(updated);
+  const nextQueue = dirtyQueue.map((op) => {
+    if(op.id === tempId){
+      return { ...op, id: newId };
+    }
+    return op;
+  });
+  setDirtyQueue(nextQueue);
+}
+
+async function syncQueue({ keepalive = false, limit = null, silent = false } = {}){
+  if(!dirtyQueue.length) return { didWork: false };
+
+  if(!silent){
+    setSyncState("Syncing");
+    setStatus("Syncing changes…");
+  }
+
+  let queue = [...dirtyQueue];
+  let processed = 0;
+
+  while(queue.length && (limit == null || processed < limit)){
+    const op = queue[0];
+    try{
+      const res = await applyQueueOperation(op, { keepalive });
+      if(op.op === "addRow"){
+        const newId = res?.id;
+        if(newId) replaceTempId(op.tempId, newId);
+      }
+      queue.shift();
+      processed += 1;
+    }catch(err){
+      console.error(err);
+      setDirtyQueue(queue);
+      if(!silent){
+        setSyncState("Error");
+        setStatus("Sync error");
+      }
+      saveCache();
+      throw err;
+    }
+  }
+
+  setDirtyQueue(queue);
+  saveCache();
+  return { didWork: processed > 0, queueEmpty: queue.length === 0 };
+}
+
+async function refreshFromServer({ allowReplaceWhenDirty = false } = {}){
+  if(dirtyQueue.length && !allowReplaceWhenDirty){
+    setStatus("Local edits pending; using cached data.");
+    setSyncState("Dirty");
+    return false;
+  }
+
   try{
     setStatus("Loading…");
-    listRoot.textContent = "Loading…";
-
     const data = await apiGet();
-    setRows(data.map(r => ({
-      ID: r.ID ?? "",
-      Name: r.Name ?? "",
-      Type: r.Type ?? "Other",
-      Value: r.Value ?? "",
-      Currency: r.Currency ?? "EUR",
-      Notes: r.Notes ?? "",
-      UpdatedAt: r.UpdatedAt ?? "",
-      _row: r._row
-    })));
+    const config = detectColumns(data);
+    setMeta({ lastLoadAt: Date.now(), columns: config });
 
-    renderAll({ focusNew });
+    const normalized = data.map((r) => normalizeRow(r, config));
+    setRows(normalized);
+    setColumnConfig(config);
 
+    saveCache();
+    renderAll();
     setStatus(`Loaded ${rows.length} asset(s)`);
+    if(!dirtyQueue.length){
+      setSyncState(meta.lastSyncAt ? "Synced" : "Idle");
+    }
+    return true;
   }catch(err){
     console.error(err);
     listRoot.innerHTML = `<div class="error">❌ ${esc(err.message || err)}</div>`;
-    setStatus("Error");
+    setSyncState("Error");
+    setStatus("Error loading");
+    return false;
   }
 }
 
-btnAdd.onclick = () => addRow().catch(err => setStatus("Add failed ❌ " + (err.message || err)));
-btnReload.onclick = () => reload();
+async function syncNow({ forceRefresh = false } = {}){
+  if(!dirtyQueue.length){
+    if(forceRefresh){
+      const refreshed = await refreshFromServer({ allowReplaceWhenDirty: true });
+      if(refreshed){
+        setSyncState("Synced");
+      }
+    }
+    return;
+  }
+
+  try{
+    const result = await syncQueue();
+    if(result.queueEmpty){
+      const data = await apiGet();
+      const config = detectColumns(data);
+      const normalized = data.map((r) => normalizeRow(r, config));
+      setRows(normalized);
+      setColumnConfig(config);
+      setMeta({ lastSyncAt: Date.now(), lastLoadAt: Date.now(), columns: config });
+      setDirtyQueue([]);
+      saveCache();
+      renderAll();
+      setSyncState("Synced");
+      setStatus("Synced");
+    }else{
+      setSyncState("Dirty");
+    }
+  }catch(err){
+    setSyncState("Error");
+    setStatus("Sync failed");
+  }
+}
+
+function scheduleSync(){
+  if(syncTimer) clearInterval(syncTimer);
+  syncTimer = setInterval(() => {
+    if(dirtyQueue.length){
+      syncNow().catch(() => {});
+    }
+  }, 60000);
+}
+
+function handleBackgroundSync(){
+  if(!dirtyQueue.length) return;
+
+  const storedUrl = getStoredApiUrl();
+  if(!storedUrl || !isValidAppsScriptUrl(storedUrl)) return;
+
+  const beaconSupported = navigator.sendBeacon && dirtyQueue.length > 0;
+  if(beaconSupported){
+    const candidate = dirtyQueue.find((op) => op.op !== "addRow");
+    if(candidate){
+      try{
+        const payload = JSON.stringify({
+          action: candidate.op,
+          id: candidate.id,
+          column: candidate.column,
+          value: candidate.value
+        });
+        navigator.sendBeacon(storedUrl, payload);
+        return;
+      }catch(err){
+        console.warn("sendBeacon failed", err);
+      }
+    }
+  }
+
+  void syncQueue({ keepalive: true, limit: 2, silent: true }).catch(() => {});
+}
+
+btnAdd.onclick = () => addAssetGroup().catch(err => setStatus("Add failed ❌ " + (err.message || err)));
+btnReload.onclick = () => syncNow({ forceRefresh: true });
 btnChangeApi.onclick = () => {
   showConnectPanel({ prefill: getStoredApiUrl() });
 };
@@ -130,7 +415,7 @@ btnSaveApi.onclick = async () => {
   apiUrlInput.classList.remove("invalid");
   setApiUrl(cleaned);
   hideConnectPanel();
-  await reload();
+  await refreshFromServer({ allowReplaceWhenDirty: true });
 };
 
 const storedTheme = localStorage.getItem(STORAGE_THEME) || "auto";
@@ -143,8 +428,12 @@ themeSelect.onchange = () => {
 };
 
 initChart({
-  chartEl,
+  pieEl: chartPieEl,
+  timelineEl: chartTimelineEl,
   modeSelectEl: chartMode,
+  pagesElement: chartPages,
+  dotsElement: chartDots,
+  filterElement: timelineFilters,
   onModeChange: () => renderChart(rows)
 });
 
@@ -157,10 +446,22 @@ if("serviceWorker" in navigator){
   }
 }
 
+const cached = loadCache();
+if(cached.rows.length){
+  setRows(cached.rows);
+  setDirtyQueue(cached.dirtyQueue || []);
+  setMeta(cached.meta || {});
+  if(cached.meta?.columns){
+    setColumnConfig(cached.meta.columns);
+  }
+  renderAll();
+}
+
 const storedUrl = getStoredApiUrl();
 if(storedUrl && isValidAppsScriptUrl(storedUrl)){
   hideConnectPanel();
-  reload();
+  refreshFromServer({ allowReplaceWhenDirty: false });
+  scheduleSync();
 }else{
   if(storedUrl && !isValidAppsScriptUrl(storedUrl)){
     clearApiUrl();
@@ -168,3 +469,18 @@ if(storedUrl && isValidAppsScriptUrl(storedUrl)){
   listRoot.textContent = "Connect your Apps Script URL to load data.";
   showConnectPanel({ prefill: "" });
 }
+
+if(dirtyQueue.length){
+  setSyncState("Dirty");
+}else if(meta.lastSyncAt){
+  setSyncState("Synced");
+}else{
+  setSyncState("Idle");
+}
+
+window.addEventListener("beforeunload", handleBackgroundSync);
+document.addEventListener("visibilitychange", () => {
+  if(document.visibilityState === "hidden"){
+    handleBackgroundSync();
+  }
+});
