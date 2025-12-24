@@ -29,7 +29,7 @@ function setControlsEnabled(enabled){
 }
 
 function showConnectPanel({ prefill = "" } = {}){
-  connectPanel.hidden = false;
+  connectPanel.removeAttribute("hidden");
   apiUrlInput.value = prefill;
   apiUrlInput.classList.remove("invalid");
   setControlsEnabled(false);
@@ -38,7 +38,7 @@ function showConnectPanel({ prefill = "" } = {}){
 }
 
 function hideConnectPanel({ enableControls = true } = {}){
-  connectPanel.hidden = true;
+  connectPanel.setAttribute("hidden", "");
   setControlsEnabled(enableControls);
 }
 
