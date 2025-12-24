@@ -38,7 +38,9 @@ export function renderList(rows, {
       <article class="asset-card" data-idx="${idx}" data-id="${esc(id)}">
         <div class="asset-header">
           <div class="asset-title">Asset</div>
-          <button class="delete-btn" data-action="delete" type="button" aria-label="Delete asset">🗑️</button>
+          <button class="delete-btn" data-action="delete" type="button" aria-label="Delete asset">
+            <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+          </button>
         </div>
 
         <div class="field">
