@@ -1,9 +1,6 @@
 import { TYPES } from "../config.js";
 import { esc, toNumber, formatEUR, toLocalDateTimeInputValue } from "../format.js";
-import { getAssetName } from "../state.js";
-
 const expandedTypes = new Set();
-const expandedAssets = new Set();
 const expandedEntries = new Set();
 let listenersAttached = false;
 let boundRoot = null;
@@ -35,25 +32,14 @@ function buildGroups(rows){
     const rawType = String(row.Type ?? "Other").trim() || "Other";
     const typeName = TYPES.includes(rawType) ? rawType : rawType;
     if(!map.has(typeName)){
-      map.set(typeName, { type: typeName, assets: new Map(), total: 0 });
+      map.set(typeName, { type: typeName, rows: [], total: 0 });
     }
     const group = map.get(typeName);
-    const assetName = getAssetName(row);
-    if(!group.assets.has(assetName)){
-      group.assets.set(assetName, { assetName, rows: [], total: 0 });
-    }
-    const assetGroup = group.assets.get(assetName);
-    assetGroup.rows.push(row);
     const val = toNumber(row.Value);
-    assetGroup.total += Number.isFinite(val) ? val : 0;
+    group.rows.push(row);
     group.total += Number.isFinite(val) ? val : 0;
   }
-  return [...map.values()]
-    .map((group) => ({
-      ...group,
-      assets: [...group.assets.values()].sort((a,b) => a.assetName.localeCompare(b.assetName))
-    }))
-    .sort(sortTypes);
+  return [...map.values()].sort(sortTypes);
 }
 
 function toDateTimeInputValue(raw){
@@ -88,8 +74,6 @@ export function renderList(rows, {
   onDelete,
   onUpdate,
   onAddEntry,
-  onRenameAsset,
-  onDeleteAsset,
   onRowsChanged,
   supportsDate = true,
   focusRowId = null
@@ -101,8 +85,6 @@ export function renderList(rows, {
     onDelete,
     onUpdate,
     onAddEntry,
-    onRenameAsset,
-    onDeleteAsset,
     onRowsChanged,
     supportsDate,
     focusRowId
@@ -117,13 +99,12 @@ export function renderList(rows, {
     ? rows.find((row) => String(row.ID) === String(focusRowId))
     : null;
   const focusType = focusRow ? (String(focusRow.Type ?? "Other") || "Other") : null;
-  const focusAsset = focusRow ? getAssetName(focusRow) : null;
 
   root.innerHTML = groups.map((group) => {
     const isExpanded = expandedTypes.has(group.type) || group.type === focusType;
     const chevron = isExpanded ? "expand_less" : "expand_more";
     const totalLabel = group.total !== 0 ? formatEUR(group.total) : "€0.00";
-    const totalTransactions = group.assets.reduce((sum, asset) => sum + asset.rows.length, 0);
+    const totalTransactions = group.rows.length;
 
     return `
       <section class="type-group" data-type="${esc(group.type)}" data-expanded="${isExpanded}">
@@ -138,84 +119,56 @@ export function renderList(rows, {
           <div class="type-group-total">${totalLabel}</div>
         </div>
         <div class="type-group-body" ${isExpanded ? "" : "hidden"}>
-          ${group.assets.map((asset) => {
-            const assetKey = `${group.type}::${asset.assetName}`;
-            const assetExpanded = expandedAssets.has(assetKey) || (group.type === focusType && asset.assetName === focusAsset);
-            const assetChevron = assetExpanded ? "expand_less" : "expand_more";
-            const assetTotal = asset.total !== 0 ? formatEUR(asset.total) : "€0.00";
+          <div class="entry-list">
+            ${group.rows.map((row) => {
+              const id = String(row.ID ?? "");
+              const type = TYPES.includes(String(row.Type)) ? String(row.Type) : "Other";
+              const valN = toNumber(row.Value);
+              const valInvalid = (String(row.Value ?? "").trim() !== "" && !Number.isFinite(valN));
+              const dateValue = toDateTimeInputValue(row.Date ?? "");
+              const displayDate = formatDateTimeDisplay(row.Date ?? "") || formatDateTimeDisplay(dateValue);
+              const isEntryExpanded = expandedEntries.has(id) || id === String(focusRowId ?? "");
+              const entryChevron = isEntryExpanded ? "expand_less" : "expand_more";
+              const valueLabel = Number.isFinite(valN) ? formatEUR(valN) : "€0.00";
 
-            return `
-              <article class="asset-card" data-asset="${esc(asset.assetName)}" data-type="${esc(group.type)}" data-expanded="${assetExpanded}">
-                <div class="asset-card-header">
-                  <button class="asset-toggle" data-action="toggle-asset" type="button" aria-label="Toggle ${esc(asset.assetName)}">
-                    <span class="material-symbols-rounded" aria-hidden="true">${assetChevron}</span>
-                  </button>
-                  <div class="asset-group-info">
-                    <input class="asset-name-input" data-kind="asset" type="text" value="${esc(asset.assetName)}" placeholder="Asset name" />
-                    <div class="muted">${asset.rows.length} transaction${asset.rows.length === 1 ? "" : "s"}</div>
-                  </div>
-                  <div class="asset-card-actions">
-                    <div class="asset-group-total">${assetTotal}</div>
-                    <button class="asset-delete-btn" data-action="delete-asset" type="button" aria-label="Delete asset">
+              return `
+                <div class="transaction-card" data-id="${esc(id)}" data-expanded="${isEntryExpanded}">
+                  <div class="transaction-summary">
+                    <button class="entry-toggle" data-action="toggle-entry" type="button" aria-label="Toggle transaction">
+                      <span class="material-symbols-rounded" aria-hidden="true">${entryChevron}</span>
+                    </button>
+                    <div class="transaction-value">${valueLabel}</div>
+                    <div class="transaction-date">${esc(displayDate || "")}</div>
+                    <button class="delete-btn" data-action="delete-entry" type="button" aria-label="Delete transaction">
                       <span class="material-symbols-rounded" aria-hidden="true">delete</span>
                     </button>
                   </div>
-                </div>
-                <div class="asset-card-body" ${assetExpanded ? "" : "hidden"}>
-                  <div class="entry-list">
-                    ${asset.rows.map((row) => {
-                      const id = String(row.ID ?? "");
-                      const type = TYPES.includes(String(row.Type)) ? String(row.Type) : "Other";
-                      const valN = toNumber(row.Value);
-                      const valInvalid = (String(row.Value ?? "").trim() !== "" && !Number.isFinite(valN));
-                      const dateValue = toDateTimeInputValue(row.Date ?? "");
-                      const displayDate = formatDateTimeDisplay(row.Date ?? "") || formatDateTimeDisplay(dateValue);
-                      const isEntryExpanded = expandedEntries.has(id) || id === String(focusRowId ?? "");
-                      const entryChevron = isEntryExpanded ? "expand_less" : "expand_more";
-                      const valueLabel = Number.isFinite(valN) ? formatEUR(valN) : "€0.00";
-
-                      return `
-                        <div class="transaction-card" data-id="${esc(id)}" data-expanded="${isEntryExpanded}">
-                          <div class="transaction-summary">
-                            <button class="entry-toggle" data-action="toggle-entry" type="button" aria-label="Toggle transaction">
-                              <span class="material-symbols-rounded" aria-hidden="true">${entryChevron}</span>
-                            </button>
-                            <div class="transaction-value">${valueLabel}</div>
-                            <div class="transaction-date">${esc(displayDate || "")}</div>
-                            <button class="delete-btn" data-action="delete-entry" type="button" aria-label="Delete transaction">
-                              <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-                            </button>
-                          </div>
-                          <div class="transaction-details" ${isEntryExpanded ? "" : "hidden"}>
-                            <div class="field">
-                              <label>Type</label>
-                              <select data-kind="type">
-                                ${TYPES.map((t) => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
-                              </select>
-                            </div>
-                            <div class="field-row">
-                              <div class="field">
-                                <label>Value (EUR)</label>
-                                <input data-kind="value" inputmode="decimal" class="value-input ${valInvalid ? "invalid" : ""}" type="text" value="${esc(row.Value ?? "")}" placeholder="e.g. 1200" />
-                              </div>
-                              <div class="field">
-                                <label>Date &amp; Time</label>
-                                <input data-kind="date" type="datetime-local" value="${esc(dateValue)}" ${supportsDate ? "" : "disabled"} />
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      `;
-                    }).join("")}
+                  <div class="transaction-details" ${isEntryExpanded ? "" : "hidden"}>
+                    <div class="field">
+                      <label>Type</label>
+                      <select data-kind="type">
+                        ${TYPES.map((t) => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
+                      </select>
+                    </div>
+                    <div class="field-row">
+                      <div class="field">
+                        <label>Value (EUR)</label>
+                        <input data-kind="value" inputmode="decimal" class="value-input ${valInvalid ? "invalid" : ""}" type="text" value="${esc(row.Value ?? "")}" placeholder="e.g. 1200" />
+                      </div>
+                      <div class="field">
+                        <label>Date &amp; Time</label>
+                        <input data-kind="date" type="datetime-local" value="${esc(dateValue)}" ${supportsDate ? "" : "disabled"} />
+                      </div>
+                    </div>
                   </div>
-                  <button class="secondary-btn" data-action="add-entry" type="button">
-                    <span class="material-symbols-rounded" aria-hidden="true">add</span>
-                    Add transaction
-                  </button>
                 </div>
-              </article>
-            `;
-          }).join("")}
+              `;
+            }).join("")}
+          </div>
+          <button class="secondary-btn" data-action="add-entry" type="button">
+            <span class="material-symbols-rounded" aria-hidden="true">add</span>
+            Add transaction
+          </button>
         </div>
       </section>
     `;
@@ -231,8 +184,6 @@ export function renderList(rows, {
 
       const typeEl = btn.closest(".type-group");
       const typeName = typeEl?.dataset?.type || "";
-      const assetEl = btn.closest(".asset-card");
-      const assetName = assetEl?.dataset?.asset || "";
 
       if(btn.dataset.action === "toggle-type"){
         if(typeEl){
@@ -241,20 +192,6 @@ export function renderList(rows, {
             expandedTypes.delete(typeName);
           }else{
             expandedTypes.add(typeName);
-          }
-          renderList(currentRows, currentOptions);
-        }
-        return;
-      }
-
-      if(btn.dataset.action === "toggle-asset"){
-        if(assetEl){
-          const assetKey = `${typeName}::${assetName}`;
-          const expanded = assetEl.dataset.expanded === "true";
-          if(expanded){
-            expandedAssets.delete(assetKey);
-          }else{
-            expandedAssets.add(assetKey);
           }
           renderList(currentRows, currentOptions);
         }
@@ -276,21 +213,7 @@ export function renderList(rows, {
       }
 
       if(btn.dataset.action === "add-entry"){
-        if(onAddEntry) await onAddEntry({ assetName, typeName });
-        return;
-      }
-
-      if(btn.dataset.action === "delete-asset"){
-        if(!assetName) return;
-        btn.disabled = true;
-        try{
-          await onDeleteAsset?.(assetName);
-          if(onRowsChanged) onRowsChanged(currentRows);
-        }catch(err){
-          console.error(err);
-          setStatus("Delete failed ❌ " + (err.message || err));
-          btn.disabled = false;
-        }
+        if(onAddEntry) await onAddEntry({ typeName });
         return;
       }
 
@@ -318,6 +241,7 @@ export function renderList(rows, {
 
       if(el.matches('select[data-kind="type"]')){
         await onUpdate(id, "Type", el.value);
+        await onUpdate(id, "Asset", el.value);
         if(onRowsChanged) onRowsChanged(currentRows);
       }
     });
@@ -347,21 +271,6 @@ export function renderList(rows, {
       delete el.dataset.before;
 
       if(after === before) return;
-
-      if(el.matches('input[data-kind="asset"]')){
-        const groupEl = el.closest(".asset-card");
-        const assetName = groupEl?.dataset?.asset || "";
-        const typeName = groupEl?.dataset?.type || "";
-        const nextName = String(after).trim() || "Unnamed";
-        const assetKey = `${typeName}::${assetName}`;
-        if(expandedAssets.has(assetKey)){
-          expandedAssets.delete(assetKey);
-          expandedAssets.add(`${typeName}::${nextName}`);
-        }
-        await onRenameAsset(assetName, nextName);
-        if(onRowsChanged) onRowsChanged(currentRows);
-        return;
-      }
 
       const entryEl = el.closest(".transaction-card");
       if(!entryEl) return;

@@ -67,7 +67,7 @@ export function normalizeRow(rawRow, config = columnConfig){
 }
 
 export function getAssetName(row){
-  return String(row.Asset ?? "").trim() || "Unnamed";
+  return String(row.Type ?? row.Asset ?? "").trim() || "Other";
 }
 
 export function getRowDateTime(row){
