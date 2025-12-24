@@ -14,7 +14,7 @@ function markValueValidity(input){
   else input.classList.add("invalid");
 }
 
-export function renderTable(rows, {
+export function renderList(rows, {
   root,
   setStatus,
   onDelete,
@@ -23,78 +23,57 @@ export function renderTable(rows, {
   focusNew=false
 }){
   if(!rows.length){
-    root.innerHTML = `<div class="muted" style="padding:12px;">No data.</div>`;
+    root.innerHTML = `<div class="muted">No data.</div>`;
     return;
   }
 
-  const cols = ["Name","Type","Value","Currency"];
+  root.innerHTML = rows.map((r, idx) => {
+    const id = String(r.ID ?? "");
+    const type = TYPES.includes(String(r.Type)) ? String(r.Type) : "Other";
+    const valN = toNumber(r.Value);
+    const valInvalid = (String(r.Value ?? "").trim() !== "" && !Number.isFinite(valN));
+    const currency = String(r.Currency ?? "EUR") || "EUR";
 
-  const thead = `
-    <thead>
-      <tr>
-        <th class="col-actions">Actions</th>
-        ${cols.map(c => `<th>${esc(c)}</th>`).join("")}
-      </tr>
-    </thead>
-  `;
+    return `
+      <article class="asset-card" data-idx="${idx}" data-id="${esc(id)}">
+        <div class="asset-header">
+          <div class="asset-title">Asset</div>
+          <button class="delete-btn" data-action="delete" type="button" aria-label="Delete asset">🗑️</button>
+        </div>
 
-  const tbody = `
-    <tbody>
-      ${rows.map((r, idx) => {
-        const id = String(r.ID ?? "");
-        const type = TYPES.includes(String(r.Type)) ? String(r.Type) : "Other";
-        const valN = toNumber(r.Value);
-        const valInvalid = (String(r.Value ?? "").trim() !== "" && !Number.isFinite(valN));
-        const currency = String(r.Currency ?? "EUR") || "EUR";
+        <div class="field">
+          <label>Name</label>
+          <div class="state-pill">${cellDot("idle")}<span class="muted">Updates on blur</span></div>
+          <input data-kind="name" type="text" value="${esc(r.Name ?? "")}" placeholder="e.g. Erste Bank, BTC, Gold" />
+        </div>
 
-        return `
-          <tr data-idx="${idx}" data-id="${esc(id)}">
-            <td class="col-actions">
-              <button class="mini" data-action="delete">🗑️</button>
-            </td>
+        <div class="field">
+          <label>Type</label>
+          <div class="state-pill">${cellDot("idle")}<span class="muted">Updates on change</span></div>
+          <select data-kind="type">
+            ${TYPES.map(t => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
+          </select>
+        </div>
 
-            <td>
-              <div class="cellmeta">
-                ${cellDot("idle")}
-                <input data-kind="name" type="text" value="${esc(r.Name ?? "")}" placeholder="e.g. Erste Bank, BTC, Gold" />
-              </div>
-            </td>
-
-            <td>
-              <div class="cellmeta">
-                ${cellDot("idle")}
-                <select data-kind="type">
-                  ${TYPES.map(t => `<option value="${esc(t)}"${t===type?" selected":""}>${esc(t)}</option>`).join("")}
-                </select>
-              </div>
-            </td>
-
-            <td class="right">
-              <div class="cellmeta" style="justify-content:flex-end;">
-                ${cellDot("idle")}
-                <input data-kind="value" inputmode="decimal" class="${valInvalid ? "invalid" : ""}" type="text" value="${esc(r.Value ?? "")}" placeholder="e.g. 1200" />
-              </div>
-            </td>
-
-            <td>
-              <div class="cellmeta">
-                ${cellDot("idle")}
-                <input data-kind="currency" type="text" value="${esc(currency)}" placeholder="EUR" />
-              </div>
-            </td>
-          </tr>
-        `;
-      }).join("")}
-    </tbody>
-  `;
-
-  root.innerHTML = `<table>${thead}${tbody}</table>`;
-
-  const table = root.querySelector("table");
+        <div class="field-row">
+          <div class="field">
+            <label>Value</label>
+            <div class="state-pill">${cellDot("idle")}<span class="muted">EUR</span></div>
+            <input data-kind="value" inputmode="decimal" class="value-input ${valInvalid ? "invalid" : ""}" type="text" value="${esc(r.Value ?? "")}" placeholder="e.g. 1200" />
+          </div>
+          <div class="field">
+            <label>Currency</label>
+            <div class="state-pill">${cellDot("idle")}<span class="muted">ISO</span></div>
+            <input data-kind="currency" class="currency-input" type="text" value="${esc(currency)}" placeholder="EUR" />
+          </div>
+        </div>
+      </article>
+    `;
+  }).join("");
 
   function setDot(rowEl, kind, state){
     const cell = rowEl.querySelector(`[data-kind="${kind}"]`);
-    const meta = cell?.closest(".cellmeta");
+    const meta = cell?.closest(".field");
     const dot = meta?.querySelector(".dot");
     if(!dot) return;
     dot.classList.remove("ok","err","saving");
@@ -121,11 +100,10 @@ export function renderTable(rows, {
       await onSave(id, columnName, valueToSave);
 
       if(rows[idx]) rows[idx][columnName] = valueToSave;
-
       if(onRowsChanged) onRowsChanged(rows);
 
       setDot(rowEl, kind, "ok");
-      setStatus("Saved ✅");
+      setStatus("Saved");
     }catch(err){
       console.error(err);
       setDot(rowEl, kind, "err");
@@ -139,10 +117,10 @@ export function renderTable(rows, {
     }
   }
 
-  table.addEventListener("click", async (e) => {
+  root.addEventListener("click", async (e) => {
     const btn = e.target.closest("button[data-action]");
     if(!btn) return;
-    const rowEl = btn.closest("tr");
+    const rowEl = btn.closest(".asset-card");
     const id = rowEl?.dataset?.id || "";
     if(!id) return;
 
@@ -157,8 +135,8 @@ export function renderTable(rows, {
     }
   });
 
-  table.addEventListener("change", async (e) => {
-    const rowEl = e.target.closest("tr");
+  root.addEventListener("change", async (e) => {
+    const rowEl = e.target.closest(".asset-card");
     if(!rowEl) return;
     const el = e.target;
 
@@ -167,14 +145,14 @@ export function renderTable(rows, {
     }
   });
 
-  table.addEventListener("input", (e) => {
+  root.addEventListener("input", (e) => {
     const el = e.target;
     if(el.matches('input[data-kind="value"]')){
       markValueValidity(el);
     }
   });
 
-  table.addEventListener("focusin", (e) => {
+  root.addEventListener("focusin", (e) => {
     const el = e.target;
     if(!(el instanceof HTMLElement)) return;
     if(el.matches('input[data-kind], select[data-kind]')){
@@ -182,12 +160,12 @@ export function renderTable(rows, {
     }
   });
 
-  table.addEventListener("focusout", async (e) => {
+  root.addEventListener("focusout", async (e) => {
     const el = e.target;
     if(!(el instanceof HTMLElement)) return;
     if(!el.matches('input[data-kind], select[data-kind]')) return;
 
-    const rowEl = el.closest("tr");
+    const rowEl = el.closest(".asset-card");
     if(!rowEl) return;
 
     const kind = el.getAttribute("data-kind");
@@ -225,7 +203,7 @@ export function renderTable(rows, {
 
   if(focusNew){
     requestAnimationFrame(() => {
-      const last = root.querySelector("tbody tr:last-child input[data-kind='name']");
+      const last = root.querySelector(".asset-card:last-child input[data-kind='name']");
       if(last) last.focus();
     });
   }
