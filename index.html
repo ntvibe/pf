@@ -14,39 +14,35 @@
 </head>
 
 <body>
-  <header class="app-header">
-    <div class="app-title">PF Dashboard</div>
-  </header>
-
   <main class="app-main">
     <section class="panel summary-panel">
       <div class="summary-row">
-        <div>
-          <div class="summary-label">Total value</div>
-          <div class="total-value" id="totalValue">€0.00</div>
-        </div>
+        <div class="sr-only">Total value</div>
+        <div class="total-value" id="totalValue" aria-label="Total value">€0.00</div>
         <div class="status" id="status">Loading…</div>
       </div>
     </section>
 
-    <section class="panel connect-panel" id="connectPanel" hidden>
-      <div class="panel-header">
-        <div>
-          <strong>Connect Apps Script</strong>
-          <div class="muted">Paste the /exec web app URL to load data.</div>
+    <section class="connect-panel" id="connectPanel" hidden>
+      <div class="panel connect-card">
+        <div class="panel-header">
+          <div>
+            <strong>Connect Apps Script</strong>
+            <div class="muted">Paste the /exec web app URL to load data.</div>
+          </div>
         </div>
-      </div>
-      <div class="connect-body">
-        <div class="field">
-          <label for="apiUrlInput">Apps Script /exec URL</label>
-          <input
-            id="apiUrlInput"
-            type="url"
-            placeholder="https://script.google.com/macros/s/XXXXX/exec"
-            autocomplete="off"
-          />
+        <div class="connect-body">
+          <div class="field">
+            <label for="apiUrlInput">Apps Script /exec URL</label>
+            <input
+              id="apiUrlInput"
+              type="url"
+              placeholder="https://script.google.com/macros/s/XXXXX/exec"
+              autocomplete="off"
+            />
+          </div>
+          <button id="btnSaveApi" class="primary-btn" type="button">Save</button>
         </div>
-        <button id="btnSaveApi" class="primary-btn" type="button">Save</button>
       </div>
     </section>
 
@@ -82,9 +78,10 @@
     <div class="toolbar-inner">
       <button id="btnReload" class="icon-btn" type="button" aria-label="Reload">⟳</button>
       <button id="btnChangeApi" class="icon-btn" type="button" aria-label="Change API URL">🔗</button>
-      <button id="btnAdd" class="icon-btn primary" type="button" aria-label="Add Asset">＋</button>
     </div>
   </div>
+
+  <button id="btnAdd" class="fab" type="button" aria-label="Add Asset">＋</button>
 
   <script type="module" src="./src/main.js"></script>
 </body>
