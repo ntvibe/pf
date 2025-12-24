@@ -30,6 +30,7 @@
             <strong>Connect Apps Script</strong>
             <div class="muted">Paste the /exec web app URL to load data.</div>
           </div>
+          <button id="btnCloseConnect" class="icon-btn subtle" type="button" aria-label="Close">✕</button>
         </div>
         <div class="connect-body">
           <div class="field">
@@ -76,8 +77,18 @@
 
   <div class="bottom-toolbar" role="toolbar" aria-label="Actions">
     <div class="toolbar-inner">
-      <button id="btnReload" class="icon-btn" type="button" aria-label="Reload">⟳</button>
-      <button id="btnChangeApi" class="icon-btn" type="button" aria-label="Change API URL">🔗</button>
+      <div class="toolbar-actions">
+        <button id="btnReload" class="icon-btn" type="button" aria-label="Reload">⟳</button>
+        <button id="btnChangeApi" class="icon-btn" type="button" aria-label="Change API URL">🔗</button>
+      </div>
+      <label class="theme-toggle">
+        <span>Theme</span>
+        <select id="themeSelect" aria-label="Theme">
+          <option value="auto" selected>Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
     </div>
   </div>
 

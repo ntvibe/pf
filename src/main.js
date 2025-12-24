@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from "./api.js";
+import { STORAGE_THEME } from "./config.js";
 import { clearApiUrl, getStoredApiUrl, isValidAppsScriptUrl, setApiUrl } from "./storage.js";
 import { rows, setRows, computeTotals } from "./state.js";
 import { esc, formatEUR } from "./format.js";
@@ -15,8 +16,10 @@ const btnAdd = document.getElementById("btnAdd");
 const btnReload = document.getElementById("btnReload");
 const btnChangeApi = document.getElementById("btnChangeApi");
 const btnSaveApi = document.getElementById("btnSaveApi");
+const btnCloseConnect = document.getElementById("btnCloseConnect");
 const connectPanel = document.getElementById("connectPanel");
 const apiUrlInput = document.getElementById("apiUrlInput");
+const themeSelect = document.getElementById("themeSelect");
 
 function setStatus(t){ elStatus.textContent = t; }
 
@@ -34,9 +37,13 @@ function showConnectPanel({ prefill = "" } = {}){
   requestAnimationFrame(() => apiUrlInput.focus());
 }
 
-function hideConnectPanel(){
+function hideConnectPanel({ enableControls = true } = {}){
   connectPanel.hidden = true;
-  setControlsEnabled(true);
+  setControlsEnabled(enableControls);
+}
+
+function applyTheme(theme){
+  document.documentElement.dataset.theme = theme;
 }
 
 function renderHeader(){
@@ -108,6 +115,10 @@ btnReload.onclick = () => reload();
 btnChangeApi.onclick = () => {
   showConnectPanel({ prefill: getStoredApiUrl() });
 };
+btnCloseConnect.onclick = () => {
+  const hasValidUrl = isValidAppsScriptUrl(getStoredApiUrl());
+  hideConnectPanel({ enableControls: hasValidUrl });
+};
 
 btnSaveApi.onclick = async () => {
   const cleaned = apiUrlInput.value.trim();
@@ -120,6 +131,15 @@ btnSaveApi.onclick = async () => {
   setApiUrl(cleaned);
   hideConnectPanel();
   await reload();
+};
+
+const storedTheme = localStorage.getItem(STORAGE_THEME) || "auto";
+applyTheme(storedTheme);
+themeSelect.value = storedTheme;
+themeSelect.onchange = () => {
+  const nextTheme = themeSelect.value;
+  localStorage.setItem(STORAGE_THEME, nextTheme);
+  applyTheme(nextTheme);
 };
 
 initChart({
