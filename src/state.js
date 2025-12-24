@@ -70,16 +70,43 @@ export function getAssetName(row){
   return String(row.Asset ?? "").trim() || "Unnamed";
 }
 
-export function getRowDate(row){
+export function getRowDateTime(row){
   const raw = String(row.Date ?? "").trim() || String(row.UpdatedAt ?? "").trim();
   if(!raw){
-    return new Date().toISOString().slice(0, 10);
+    return new Date();
   }
   const parsed = new Date(raw);
   if(Number.isNaN(parsed.getTime())){
-    return raw.slice(0, 10);
+    return null;
   }
-  return parsed.toISOString().slice(0, 10);
+  return parsed;
+}
+
+function formatDateTimeKey(date){
+  const d = date instanceof Date ? date : new Date(date);
+  if(Number.isNaN(d.getTime())){
+    return String(date || "");
+  }
+  const pad = (num) => String(num).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+export function getRowDateKey(row){
+  const raw = String(row.Date ?? "").trim() || String(row.UpdatedAt ?? "").trim();
+  if(!raw){
+    return formatDateTimeKey(new Date());
+  }
+  const parsed = new Date(raw);
+  if(Number.isNaN(parsed.getTime())){
+    if(raw.includes("T")){
+      return raw.replace("T", " ").slice(0, 16);
+    }
+    if(raw.length >= 10){
+      return `${raw.slice(0, 10)} 00:00`;
+    }
+    return raw;
+  }
+  return formatDateTimeKey(parsed);
 }
 
 export function computeTotals(inputRows = rows){
@@ -126,7 +153,7 @@ export function buildTimelineSeries(inputRows = rows, { assetFilter = null } = {
     if(assetFilter && assetFilter !== "All" && asset !== assetFilter) continue;
     const valN = toNumber(r.Value);
     if(!Number.isFinite(valN)) continue;
-    const dateKey = getRowDate(r);
+    const dateKey = getRowDateKey(r);
     map.set(dateKey, (map.get(dateKey) || 0) + valN);
   }
   return [...map.entries()]

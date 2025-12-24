@@ -295,29 +295,29 @@ body{
   gap:12px;
   padding:16px;
 }
-.asset-group{
+.type-group{
   border:1px solid var(--border);
   border-radius:18px;
   background:var(--surface);
   overflow:hidden;
 }
-.asset-group-header{
+.type-group-header{
   display:flex;
   align-items:center;
   gap:12px;
   padding:14px 16px;
   border-bottom:1px solid var(--border);
 }
-.asset-group-body{
+.type-group-body{
   padding:14px 16px 16px;
   display:flex;
   flex-direction:column;
   gap:12px;
 }
-.asset-group-body[hidden]{
+.type-group-body[hidden]{
   display:none;
 }
-.asset-toggle{
+.type-toggle{
   border:none;
   background:var(--accent-weak);
   color:var(--accent);
@@ -328,11 +328,70 @@ body{
   place-items:center;
   cursor:pointer;
 }
+.type-group-info{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.type-name{
+  font-size:16px;
+  font-weight:600;
+}
+.asset-card{
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--surface);
+  overflow:hidden;
+}
+.asset-card-header{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  border-bottom:1px solid var(--border);
+}
+.asset-card-body{
+  padding:12px 14px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.asset-card-body[hidden]{
+  display:none;
+}
+.asset-toggle{
+  border:none;
+  background:var(--accent-weak);
+  color:var(--accent);
+  border-radius:12px;
+  width:32px;
+  height:32px;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+}
 .asset-group-info{
   flex:1;
   display:flex;
   flex-direction:column;
   gap:4px;
+}
+.asset-card-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+}
+.asset-delete-btn{
+  border:none;
+  background:#fee2e2;
+  color:var(--danger);
+  border-radius:10px;
+  width:32px;
+  height:32px;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
 }
 .asset-name-input{
   border:none;
@@ -348,12 +407,16 @@ body{
   font-weight:700;
   font-size:14px;
 }
+.type-group-total{
+  font-weight:700;
+  font-size:14px;
+}
 .entry-list{
   display:flex;
   flex-direction:column;
   gap:12px;
 }
-.entry-card{
+.transaction-card{
   border:1px solid var(--border);
   border-radius:16px;
   padding:12px;
@@ -362,17 +425,30 @@ body{
   gap:10px;
   background:var(--surface);
 }
-.entry-header{
+.transaction-summary{
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  gap:10px;
 }
-.entry-title{
-  font-weight:600;
+.entry-toggle{
+  border:none;
+  background:var(--accent-weak);
+  color:var(--accent);
+  border-radius:10px;
+  width:32px;
+  height:32px;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+}
+.transaction-value{
+  font-weight:700;
+  font-size:16px;
+  flex:1;
+}
+.transaction-date{
   font-size:12px;
   color:var(--muted);
-  text-transform:uppercase;
-  letter-spacing:0.4px;
 }
 .delete-btn{
   border:none;
@@ -401,6 +477,9 @@ body{
   gap:12px;
 }
 .field-row .field{flex:1}
+.transaction-details[hidden]{
+  display:none;
+}
 
 input, select{
   width:100%;
@@ -432,6 +511,39 @@ input.invalid{
   color:var(--danger);
   padding:8px 0;
   font-size:13px;
+}
+
+.modal{
+  border:none;
+  padding:0;
+  width:min(92vw, 420px);
+  border-radius:18px;
+  background:var(--surface);
+  box-shadow:0 24px 48px rgba(15, 23, 42, 0.25);
+}
+.modal::backdrop{
+  background:rgba(15, 23, 42, 0.4);
+}
+.modal-card{
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  padding:18px;
+}
+.modal-header{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+}
+.modal-body{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:12px;
 }
 
 .bottom-toolbar{

@@ -13,6 +13,7 @@ import {
   detectColumns,
   normalizeRow,
   computeTotals,
+  listAssets,
   loadCache,
   saveCache,
   enqueueAddRow,
@@ -20,7 +21,7 @@ import {
   enqueueDeleteRow,
   isTempId
 } from "./state.js";
-import { esc, formatEUR } from "./format.js";
+import { esc, formatEUR, toLocalDateTimeInputValue, toNumber } from "./format.js";
 import { initChart, renderChart } from "./ui/chart.js";
 import { renderList } from "./ui/list.js";
 
@@ -35,6 +36,7 @@ const chartDots = document.getElementById("chartDots");
 const timelineFilters = document.getElementById("timelineFilters");
 
 const btnAdd = document.getElementById("btnAdd");
+const btnAddAsset = document.getElementById("btnAddAsset");
 const btnReload = document.getElementById("btnReload");
 const btnChangeApi = document.getElementById("btnChangeApi");
 const btnSaveApi = document.getElementById("btnSaveApi");
@@ -42,6 +44,16 @@ const btnCloseConnect = document.getElementById("btnCloseConnect");
 const connectPanel = document.getElementById("connectPanel");
 const apiUrlInput = document.getElementById("apiUrlInput");
 const themeSelect = document.getElementById("themeSelect");
+const assetDialog = document.getElementById("assetDialog");
+const assetDialogForm = document.getElementById("assetDialogForm");
+const assetNameInput = document.getElementById("assetNameInput");
+const transactionDialog = document.getElementById("transactionDialog");
+const transactionDialogForm = document.getElementById("transactionDialogForm");
+const transactionAssetInput = document.getElementById("transactionAssetInput");
+const transactionTypeSelect = document.getElementById("transactionTypeSelect");
+const transactionValueInput = document.getElementById("transactionValueInput");
+const transactionDateInput = document.getElementById("transactionDateInput");
+const transactionAssetList = document.getElementById("transactionAssetList");
 
 let syncState = "Idle";
 let statusNote = "";
@@ -86,6 +98,7 @@ function updateSyncBadge(){
 
 function setControlsEnabled(enabled){
   btnAdd.disabled = !enabled;
+  if(btnAddAsset) btnAddAsset.disabled = !enabled;
   btnReload.disabled = !enabled;
 }
 
@@ -109,7 +122,7 @@ function applyTheme(theme){
 
 function renderHeader(){
   const { total } = computeTotals(rows);
-  elTotal.textContent = total > 0 ? formatEUR(total) : "€0.00";
+  elTotal.textContent = total !== 0 ? formatEUR(total) : "€0.00";
 }
 
 function renderAll({ focusRowId = null } = {}){
@@ -120,14 +133,14 @@ function renderAll({ focusRowId = null } = {}){
     setStatus,
     onDelete: deleteRowById,
     onUpdate: updateCell,
-    onAddEntry: addEntryToAsset,
+    onAddEntry: openTransactionDialog,
     onRenameAsset: renameAssetGroup,
+    onDeleteAsset: deleteAssetGroup,
     onRowsChanged: () => {
       renderHeader();
       renderChart(rows);
       saveCache();
     },
-    supportsEntries: Boolean(columnConfig.entry),
     supportsDate: columnConfig.date === "Date",
     focusRowId
   });
@@ -153,23 +166,65 @@ function createEmptyRow({ assetName = "", entryName = "" } = {}){
     Type: "Other",
     Value: "",
     Currency: "EUR",
-    Date: new Date().toISOString().slice(0, 10),
+    Date: toLocalDateTimeInputValue(new Date()),
     Notes: "",
     UpdatedAt: "",
     _row: ""
   };
 }
 
-async function addAssetGroup(){
-  const newRow = createEmptyRow({ assetName: "New Asset", entryName: "" });
+function openAssetDialog(){
+  if(!assetDialog) return;
+  assetNameInput.value = "";
+  assetDialog.showModal();
+  requestAnimationFrame(() => assetNameInput.focus());
+}
+
+function setTransactionDialogDefaults({ assetName = "", typeName = "" } = {}){
+  if(transactionTypeSelect){
+    transactionTypeSelect.value = typeName || "Other";
+  }
+  if(transactionValueInput){
+    transactionValueInput.value = "";
+    transactionValueInput.classList.remove("invalid");
+  }
+  if(transactionDateInput){
+    transactionDateInput.value = toLocalDateTimeInputValue(new Date());
+  }
+  if(transactionAssetInput){
+    transactionAssetInput.value = assetName || "";
+  }
+}
+
+function refreshTransactionAssetOptions(){
+  if(!transactionAssetList) return;
+  const assets = listAssets(rows);
+  transactionAssetList.innerHTML = assets.map((asset) => `<option value="${esc(asset)}"></option>`).join("");
+}
+
+function openTransactionDialog({ assetName = "", typeName = "" } = {}){
+  if(!transactionDialog) return;
+  refreshTransactionAssetOptions();
+  setTransactionDialogDefaults({ assetName, typeName });
+  transactionDialog.showModal();
+  requestAnimationFrame(() => transactionAssetInput.focus());
+}
+
+async function addAssetGroup(assetName){
+  const nextName = String(assetName || "").trim() || "New Asset";
+  const newRow = createEmptyRow({ assetName: nextName, entryName: "" });
+  newRow.Value = "0";
   setRows([...rows, newRow]);
   setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
   markDirty();
   renderAll({ focusRowId: newRow.ID });
 }
 
-async function addEntryToAsset(assetName){
+async function addEntryToAsset({ assetName, typeName, value, dateTime } = {}){
   const newRow = createEmptyRow({ assetName, entryName: "" });
+  if(typeName) newRow.Type = typeName;
+  if(value != null) newRow.Value = value;
+  if(dateTime) newRow.Date = dateTime;
   setRows([...rows, newRow]);
   setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
   markDirty();
@@ -209,6 +264,22 @@ async function renameAssetGroup(previousName, nextName){
       queue = enqueueUpdateCell(queue, { id: row.ID, column: col, value: nextName });
     }
   });
+  setDirtyQueue(queue);
+  markDirty();
+  renderAll();
+}
+
+async function deleteAssetGroup(assetName){
+  const name = String(assetName || "").trim();
+  if(!name) return;
+  const nextRows = rows.filter((row) => String(row.Asset) !== String(name));
+  let queue = dirtyQueue;
+  rows.forEach((row) => {
+    if(String(row.Asset) === String(name)){
+      queue = enqueueDeleteRow(queue, row.ID);
+    }
+  });
+  setRows(nextRows);
   setDirtyQueue(queue);
   markDirty();
   renderAll();
@@ -338,12 +409,7 @@ async function syncNow({ forceRefresh = false } = {}){
   try{
     const result = await syncQueue();
     if(result.queueEmpty){
-      const data = await apiGet();
-      const config = detectColumns(data);
-      const normalized = data.map((r) => normalizeRow(r, config));
-      setRows(normalized);
-      setColumnConfig(config);
-      setMeta({ lastSyncAt: Date.now(), lastLoadAt: Date.now(), columns: config });
+      setMeta({ lastSyncAt: Date.now() });
       setDirtyQueue([]);
       saveCache();
       renderAll();
@@ -395,7 +461,10 @@ function handleBackgroundSync(){
   void syncQueue({ keepalive: true, limit: 2, silent: true }).catch(() => {});
 }
 
-btnAdd.onclick = () => addAssetGroup().catch(err => setStatus("Add failed ❌ " + (err.message || err)));
+btnAdd.onclick = () => openTransactionDialog();
+if(btnAddAsset){
+  btnAddAsset.onclick = () => openAssetDialog();
+}
 btnReload.onclick = () => syncNow({ forceRefresh: true });
 btnChangeApi.onclick = () => {
   showConnectPanel({ prefill: getStoredApiUrl() });
@@ -417,6 +486,53 @@ btnSaveApi.onclick = async () => {
   hideConnectPanel();
   await refreshFromServer({ allowReplaceWhenDirty: true });
 };
+
+if(assetDialogForm){
+  assetDialogForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = assetNameInput.value.trim();
+    if(!name){
+      assetNameInput.classList.add("invalid");
+      setStatus("Enter an asset name.");
+      return;
+    }
+    assetNameInput.classList.remove("invalid");
+    await addAssetGroup(name);
+    assetDialog.close();
+  });
+}
+
+if(transactionDialogForm){
+  transactionDialogForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const assetName = transactionAssetInput.value.trim();
+    if(!assetName){
+      transactionAssetInput.classList.add("invalid");
+      setStatus("Select or enter an asset name.");
+      return;
+    }
+    transactionAssetInput.classList.remove("invalid");
+
+    const valueRaw = transactionValueInput.value.trim();
+    if(!valueRaw){
+      transactionValueInput.classList.add("invalid");
+      setStatus("Enter a value.");
+      return;
+    }
+    const valueNumber = toNumber(valueRaw);
+    if(!Number.isFinite(valueNumber)){
+      transactionValueInput.classList.add("invalid");
+      setStatus("Invalid number ❌");
+      return;
+    }
+    transactionValueInput.classList.remove("invalid");
+
+    const typeName = transactionTypeSelect.value || "Other";
+    const dateTime = transactionDateInput.value || toLocalDateTimeInputValue(new Date());
+    await addEntryToAsset({ assetName, typeName, value: valueRaw, dateTime });
+    transactionDialog.close();
+  });
+}
 
 const storedTheme = localStorage.getItem(STORAGE_THEME) || "auto";
 applyTheme(storedTheme);

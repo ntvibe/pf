@@ -88,6 +88,9 @@
           <strong>Assets</strong>
           <div class="muted">Local-first edits (sync later)</div>
         </div>
+        <button id="btnAddAsset" class="icon-btn subtle" type="button" aria-label="Add asset">
+          <span class="material-symbols-rounded" aria-hidden="true">add</span>
+        </button>
       </div>
       <div id="assetList" class="asset-list">Loading…</div>
     </section>
@@ -115,9 +118,73 @@
     </footer>
   </main>
 
-  <button id="btnAdd" class="fab" type="button" aria-label="Add Asset">
+  <button id="btnAdd" class="fab" type="button" aria-label="Add transaction">
     <span class="material-symbols-rounded" aria-hidden="true">add</span>
   </button>
+
+  <dialog id="assetDialog" class="modal">
+    <form id="assetDialogForm" class="modal-card" method="dialog">
+      <div class="modal-header">
+        <div>
+          <strong>New asset</strong>
+          <div class="muted">Add a name for the asset.</div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="assetNameInput">Asset name</label>
+          <input id="assetNameInput" type="text" placeholder="e.g. Savings account" autocomplete="off" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-btn" type="button" onclick="document.getElementById('assetDialog').close()">Cancel</button>
+        <button class="primary-btn" type="submit">Add asset</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="transactionDialog" class="modal">
+    <form id="transactionDialogForm" class="modal-card" method="dialog">
+      <div class="modal-header">
+        <div>
+          <strong>New transaction</strong>
+          <div class="muted">Track a value change for an asset.</div>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="field">
+          <label for="transactionAssetInput">Asset</label>
+          <input id="transactionAssetInput" list="transactionAssetList" type="text" placeholder="Choose an asset" autocomplete="off" />
+          <datalist id="transactionAssetList"></datalist>
+        </div>
+        <div class="field">
+          <label for="transactionTypeSelect">Type</label>
+          <select id="transactionTypeSelect">
+            <option value="Bank">Bank</option>
+            <option value="Crypto">Crypto</option>
+            <option value="Gold">Gold</option>
+            <option value="Stocks">Stocks</option>
+            <option value="Cash">Cash</option>
+            <option value="Other" selected>Other</option>
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="transactionValueInput">Value (EUR)</label>
+            <input id="transactionValueInput" inputmode="decimal" type="text" placeholder="e.g. -250 or 1200" />
+          </div>
+          <div class="field">
+            <label for="transactionDateInput">Date &amp; Time</label>
+            <input id="transactionDateInput" type="datetime-local" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-btn" type="button" onclick="document.getElementById('transactionDialog').close()">Cancel</button>
+        <button class="primary-btn" type="submit">Add transaction</button>
+      </div>
+    </form>
+  </dialog>
 
   <script type="module" src="./src/main.js"></script>
 </body>
