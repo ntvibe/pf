@@ -95,7 +95,7 @@ function setControlsEnabled(enabled){
 }
 
 function showConnectPanel({ prefill = "" } = {}){
-  connectPanel.removeAttribute("hidden");
+  connectPanel.hidden = false;
   apiUrlInput.value = prefill;
   apiUrlInput.classList.remove("invalid");
   setControlsEnabled(false);
@@ -104,7 +104,7 @@ function showConnectPanel({ prefill = "" } = {}){
 }
 
 function hideConnectPanel({ enableControls = true } = {}){
-  connectPanel.setAttribute("hidden", "");
+  connectPanel.hidden = true;
   setControlsEnabled(enableControls);
 }
 
