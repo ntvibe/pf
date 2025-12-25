@@ -49,14 +49,18 @@ export function detectColumns(rawRows = []){
 }
 
 export function normalizeRow(rawRow, config = columnConfig){
-  const assetValue = config.asset === "Asset" ? rawRow.Asset : rawRow.Name;
+  const rawType = String(rawRow.Type ?? "").trim();
+  const rawAsset = config.asset === "Asset" ? rawRow.Asset : rawRow.Name;
+  const assetSource = String(rawAsset ?? "").trim();
+  const typeValue = rawType || assetSource || "Other";
+  const assetValue = typeValue;
   const entryValue = config.entry ? rawRow.Entry : "";
   const dateValue = config.date === "Date" ? rawRow.Date : rawRow.UpdatedAt;
   return {
     ID: rawRow.ID ?? "",
     Asset: assetValue ?? "",
     Entry: entryValue ?? "",
-    Type: rawRow.Type ?? "Other",
+    Type: typeValue,
     Value: rawRow.Value ?? "",
     Currency: rawRow.Currency ?? "EUR",
     Date: dateValue ?? "",
@@ -67,7 +71,7 @@ export function normalizeRow(rawRow, config = columnConfig){
 }
 
 export function getAssetName(row){
-  return String(row.Type ?? row.Asset ?? "").trim() || "Other";
+  return String(row.Type ?? "").trim() || "Other";
 }
 
 export function getRowDateTime(row){
