@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Neumorphic Bottom Nav</title>
+
+  <!-- Optional icons (Material Symbols) -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:wght@400;600&display=swap" />
+
+  <style>
+    :root{
+      --bg:#e9eef6;
+      --card:#eef3fb;
+      --shadow1: rgba(163, 177, 198, .55);
+      --shadow2: rgba(255, 255, 255, .9);
+      --text:#2b3445;
+      --muted:#7a869a;
+      --accent:#3b82f6;
+
+      --radius:18px;
+      --btn:64px;
+      --gap:18px;
+    }
+
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      min-height:100vh;
+      display:grid;
+      place-items:center;
+      background: radial-gradient(1200px 700px at 30% 20%, #f7f9ff 0%, var(--bg) 55%, #dde6f3 100%);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:var(--text);
+    }
+
+    /* Phone frame-ish preview (optional) */
+    .phone{
+      width:min(390px, 92vw);
+      height:min(780px, 92vh);
+      border-radius:34px;
+      background: linear-gradient(180deg, #f6f8ff 0%, var(--bg) 60%, #dfe8f6 100%);
+      box-shadow:
+        18px 18px 40px var(--shadow1),
+        -18px -18px 40px var(--shadow2);
+      position:relative;
+      overflow:hidden;
+      padding:24px 18px 96px; /* bottom padding for nav */
+    }
+
+    .content{
+      height:100%;
+      display:flex;
+      flex-direction:column;
+      gap:14px;
+      justify-content:flex-start;
+    }
+
+    .title{
+      font-weight:650;
+      font-size:18px;
+      letter-spacing:.2px;
+      opacity:.9;
+    }
+
+    /* --- Bottom Nav --- */
+    .bottom-nav{
+      position:absolute;
+      left:0; right:0; bottom:0;
+      padding:18px 18px 22px;
+    }
+
+    .nav-shell{
+      background: rgba(238, 243, 251, .78);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-radius: 28px;
+      padding: 14px;
+      box-shadow:
+        10px 10px 24px var(--shadow1),
+        -10px -10px 24px var(--shadow2);
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap: var(--gap);
+    }
+
+    .neo-btn{
+      width:var(--btn);
+      height:var(--btn);
+      border:0;
+      border-radius: var(--radius);
+      background: var(--card);
+      color: var(--muted);
+      display:grid;
+      place-items:center;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .12s ease, box-shadow .12s ease, color .12s ease, background .12s ease;
+      box-shadow:
+        8px 8px 16px var(--shadow1),
+        -8px -8px 16px var(--shadow2);
+      position:relative;
+    }
+
+    .neo-btn .material-symbols-rounded{
+      font-size:26px;
+      font-variation-settings: "FILL" 0, "wght" 600, "GRAD" 0, "opsz" 24;
+    }
+
+    /* press feedback */
+    .neo-btn:active{
+      transform: scale(.96);
+      box-shadow:
+        inset 7px 7px 14px var(--shadow1),
+        inset -7px -7px 14px var(--shadow2);
+    }
+
+    /* Active tab */
+    .neo-btn.is-active{
+      color: var(--accent);
+      background: linear-gradient(180deg, #f4f8ff 0%, #eaf1ff 100%);
+      box-shadow:
+        inset 7px 7px 14px rgba(163,177,198,.35),
+        inset -7px -7px 14px rgba(255,255,255,.95),
+        0 0 0 1px rgba(59,130,246,.08);
+    }
+
+    /* Little glow dot */
+    .neo-btn.is-active::after{
+      content:"";
+      position:absolute;
+      bottom:10px;
+      width:6px;height:6px;
+      border-radius:99px;
+      background: var(--accent);
+      box-shadow: 0 0 14px rgba(59,130,246,.55);
+      opacity:.95;
+    }
+
+    /* Optional: "primary" middle button */
+    .neo-btn.is-primary{
+      width: calc(var(--btn) + 10px);
+      height: calc(var(--btn) + 10px);
+      border-radius: 22px;
+      color: #fff;
+      background: linear-gradient(180deg, #5aa0ff 0%, #2f6dff 100%);
+      box-shadow:
+        10px 10px 22px rgba(34, 91, 188, .35),
+        -10px -10px 22px rgba(255,255,255,.9);
+    }
+    .neo-btn.is-primary:active{
+      box-shadow:
+        inset 8px 8px 16px rgba(0,0,0,.12),
+        inset -8px -8px 16px rgba(255,255,255,.28);
+    }
+
+    /* Accessibility focus */
+    .neo-btn:focus-visible{
+      outline: none;
+      box-shadow:
+        0 0 0 3px rgba(59,130,246,.25),
+        8px 8px 16px var(--shadow1),
+        -8px -8px 16px var(--shadow2);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="phone">
+    <div class="content">
+      <div class="title">Training UI (preview)</div>
+      <div style="opacity:.7;font-size:14px;line-height:1.4">
+        Replace icons/labels freely — this is just the **button/nav styling template**.
+      </div>
+    </div>
+
+    <nav class="bottom-nav">
+      <div class="nav-shell" id="nav">
+        <button class="neo-btn is-active" data-tab="home" aria-label="Home">
+          <span class="material-symbols-rounded">home</span>
+        </button>
+
+        <button class="neo-btn" data-tab="workout" aria-label="Workout">
+          <span class="material-symbols-rounded">fitness_center</span>
+        </button>
+
+        <button class="neo-btn is-primary" data-tab="tap" aria-label="Tap / Done">
+          <span class="material-symbols-rounded">check</span>
+        </button>
+
+        <button class="neo-btn" data-tab="stats" aria-label="Stats">
+          <span class="material-symbols-rounded">donut_large</span>
+        </button>
+
+        <button class="neo-btn" data-tab="settings" aria-label="Settings">
+          <span class="material-symbols-rounded">settings</span>
+        </button>
+      </div>
+    </nav>
+  </div>
+
+  <script>
+    // Simple "active tab" handling
+    const nav = document.getElementById('nav');
+    nav.addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-tab]');
+      if (!btn) return;
+
+      // If you want the middle "primary" button to NOT change active state:
+      if (btn.classList.contains('is-primary')) {
+        btn.animate([{ transform: 'scale(1)' }, { transform: 'scale(.96)' }, { transform: 'scale(1)' }], {
+          duration: 180, easing: 'ease-out'
+        });
+        return;
+      }
+
+      nav.querySelectorAll('.neo-btn').forEach(b => b.classList.remove('is-active'));
+      btn.classList.add('is-active');
+    });
+  </script>
+</body>
+</html>
