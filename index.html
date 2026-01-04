@@ -62,8 +62,8 @@
         <label class="toggle">
           <span>Group</span>
           <select id="chartMode">
-            <option value="asset" selected>By Asset</option>
-            <option value="type">By Type</option>
+            <option value="category" selected>By Category</option>
+            <option value="subcategory">By Subcategory</option>
           </select>
         </label>
       </div>
@@ -73,9 +73,8 @@
             <div id="chartPie" class="chart"></div>
           </div>
           <div class="chart-page">
-            <div class="chart-subtitle">Net worth over time</div>
+            <div class="chart-subtitle">Activity over time</div>
             <div id="chartTimeline" class="chart"></div>
-            <div class="timeline-filters" id="timelineFilters"></div>
           </div>
         </div>
         <div class="pager-dots" id="chartDots"></div>
@@ -85,11 +84,21 @@
     <section class="panel">
       <div class="panel-header">
         <div>
-          <strong>Assets</strong>
-          <div class="muted">Local-first edits (sync later)</div>
+          <strong>Transactions</strong>
+          <div class="muted">Filter by category + subcategory</div>
         </div>
       </div>
-      <div id="assetList" class="asset-list">Loading…</div>
+      <div class="filter-row">
+        <div class="field">
+          <label for="categoryFilter">Category</label>
+          <select id="categoryFilter"></select>
+        </div>
+        <div class="field">
+          <label for="subcategoryFilter">Subcategory</label>
+          <select id="subcategoryFilter"></select>
+        </div>
+      </div>
+      <div id="transactionList" class="transaction-list">Loading…</div>
     </section>
 
     <footer class="bottom-toolbar" role="toolbar" aria-label="Actions">
@@ -123,36 +132,39 @@
     <form id="transactionDialogForm" class="modal-card" method="dialog">
       <div class="modal-header">
         <div>
-          <strong>New transaction</strong>
-          <div class="muted">Track a value change for an asset.</div>
+          <strong>New entry</strong>
+          <div class="muted">Record a new transaction.</div>
         </div>
       </div>
       <div class="modal-body">
         <div class="field">
-          <label for="transactionTypeSelect">Type</label>
-          <select id="transactionTypeSelect">
-            <option value="Bank">Bank</option>
-            <option value="Crypto">Crypto</option>
-            <option value="Gold">Gold</option>
-            <option value="Stocks">Stocks</option>
-            <option value="Cash">Cash</option>
-            <option value="Other" selected>Other</option>
-          </select>
+          <label for="transactionCategorySelect">Category</label>
+          <select id="transactionCategorySelect"></select>
+          <input id="transactionCategoryInput" type="text" placeholder="New category name" hidden />
+        </div>
+        <div class="field">
+          <label for="transactionSubcategorySelect">Subcategory</label>
+          <select id="transactionSubcategorySelect"></select>
+          <input id="transactionSubcategoryInput" type="text" placeholder="New subcategory name" hidden />
         </div>
         <div class="field-row">
           <div class="field">
-            <label for="transactionValueInput">Value (EUR)</label>
-            <input id="transactionValueInput" inputmode="decimal" type="text" placeholder="e.g. -250 or 1200" />
+            <label for="transactionAmountInput">Amount (EUR)</label>
+            <input id="transactionAmountInput" inputmode="decimal" type="text" placeholder="e.g. -45 or 1200" />
           </div>
           <div class="field">
             <label for="transactionDateInput">Date &amp; Time</label>
             <input id="transactionDateInput" type="datetime-local" />
           </div>
         </div>
+        <div class="field">
+          <label for="transactionNoteInput">Note</label>
+          <input id="transactionNoteInput" type="text" placeholder="Optional note" />
+        </div>
       </div>
       <div class="modal-actions">
         <button class="secondary-btn" type="button" onclick="document.getElementById('transactionDialog').close()">Cancel</button>
-        <button class="primary-btn" type="submit">Add transaction</button>
+        <button class="primary-btn" type="submit">Save entry</button>
       </div>
     </form>
   </dialog>

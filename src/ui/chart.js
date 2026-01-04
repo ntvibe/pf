@@ -1,4 +1,4 @@
-import { buildChartData, buildTimelineSeries, listAssets } from "../state.js";
+import { buildChartData, buildTimelineSeries } from "../state.js";
 import { formatEUR } from "../format.js";
 
 let pieChart = null;
@@ -6,9 +6,7 @@ let timelineChart = null;
 let modeSelect = null;
 let pagesEl = null;
 let dotsEl = null;
-let filterEl = null;
 let currentPage = 0;
-let currentAssetFilter = "All";
 let lastRows = [];
 let resizeHandlerAttached = false;
 
@@ -18,7 +16,6 @@ export function initChart({
   modeSelectEl,
   pagesElement,
   dotsElement,
-  filterElement,
   onModeChange
 }){
   if(!pieEl || !timelineEl || typeof echarts === "undefined") return;
@@ -47,7 +44,6 @@ export function initChart({
 
   pagesEl = pagesElement || pagesEl;
   dotsEl = dotsElement || dotsEl;
-  filterEl = filterElement || filterEl;
 
   if(pagesEl){
     setupPager(pagesEl);
@@ -119,36 +115,16 @@ function setPage(index){
 
 function updateDots(){
   if(!dotsEl) return;
-  dotsEl.innerHTML = [0,1].map((idx) => (
+  dotsEl.innerHTML = [0, 1].map((idx) => (
     `<button class="pager-dot ${idx === currentPage ? "active" : ""}" type="button" data-index="${idx}" aria-label="Chart page ${idx + 1}"></button>`
   )).join("");
 }
 
-function renderAssetFilter(rows){
-  if(!filterEl) return;
-  const assets = listAssets(rows);
-  const options = ["All", ...assets];
-  if(!options.includes(currentAssetFilter)){
-    currentAssetFilter = "All";
-  }
-  filterEl.innerHTML = options.map((asset) => (
-    `<button class="filter-chip ${asset === currentAssetFilter ? "active" : ""}" type="button" data-asset="${asset}">${asset}</button>`
-  )).join("");
-
-  filterEl.querySelectorAll("button[data-asset]").forEach((btn) => {
-    btn.onclick = () => {
-      currentAssetFilter = btn.dataset.asset || "All";
-      renderTimeline(lastRows);
-      renderAssetFilter(lastRows);
-    };
-  });
-}
-
 function renderPie(rows, mode){
   if(!pieChart) return;
-  const currentMode = mode || modeSelect?.value || "asset";
+  const currentMode = mode || modeSelect?.value || "category";
   const data = buildChartData(currentMode, rows);
-  const total = data.reduce((s, d) => s + (d.value || 0), 0);
+  const total = data.reduce((sum, d) => sum + (d.value || 0), 0);
   const totalLabel = total > 0 ? formatEUR(total) : "—";
 
   pieChart.setOption({
@@ -220,7 +196,7 @@ function renderPie(rows, mode){
 
 function renderTimeline(rows){
   if(!timelineChart) return;
-  const seriesData = buildTimelineSeries(rows, { assetFilter: currentAssetFilter });
+  const seriesData = buildTimelineSeries(rows);
   const dates = seriesData.map((d) => d.date);
   const values = seriesData.map((d) => d.value);
 
@@ -248,7 +224,7 @@ function renderTimeline(rows){
     },
     series: [
       {
-        name: "Net Worth",
+        name: "Spending",
         type: "line",
         smooth: true,
         data: values,
@@ -265,6 +241,5 @@ export function renderChart(rows, mode){
   lastRows = rows;
   renderPie(rows, mode);
   renderTimeline(rows);
-  renderAssetFilter(rows);
   updateDots();
 }
