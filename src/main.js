@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./api.js";
-import { STORAGE_THEME } from "./config.js";
+import { STORAGE_LAST_CATEGORY, STORAGE_LAST_SUBCATEGORY, STORAGE_THEME } from "./config.js";
 import { clearApiUrl, getStoredApiUrl, isValidAppsScriptUrl, setApiUrl } from "./storage.js";
 import {
   rows,
@@ -8,17 +8,16 @@ import {
   setDirtyQueue,
   meta,
   setMeta,
-  columnConfig,
-  setColumnConfig,
-  detectColumns,
   normalizeRow,
-  computeTotals,
+  computeTotal,
+  getCategories,
+  getSubcategories,
+  getFilteredTransactions,
   loadCache,
   saveCache,
   enqueueAddRow,
   enqueueUpdateCell,
-  enqueueDeleteRow,
-  isTempId
+  enqueueDeleteRow
 } from "./state.js";
 import { esc, formatEUR, toLocalDateTimeInputValue, toNumber } from "./format.js";
 import { initChart, renderChart } from "./ui/chart.js";
@@ -26,13 +25,15 @@ import { renderList } from "./ui/list.js";
 
 const elStatus = document.getElementById("status");
 const elTotal = document.getElementById("totalValue");
-const listRoot = document.getElementById("assetList");
+const listRoot = document.getElementById("transactionList");
 const chartPieEl = document.getElementById("chartPie");
 const chartTimelineEl = document.getElementById("chartTimeline");
 const chartMode = document.getElementById("chartMode");
 const chartPages = document.getElementById("chartPages");
 const chartDots = document.getElementById("chartDots");
-const timelineFilters = document.getElementById("timelineFilters");
+
+const categoryFilterSelect = document.getElementById("categoryFilter");
+const subcategoryFilterSelect = document.getElementById("subcategoryFilter");
 
 const btnAdd = document.getElementById("btnAdd");
 const btnReload = document.getElementById("btnReload");
@@ -42,15 +43,24 @@ const btnCloseConnect = document.getElementById("btnCloseConnect");
 const connectPanel = document.getElementById("connectPanel");
 const apiUrlInput = document.getElementById("apiUrlInput");
 const themeSelect = document.getElementById("themeSelect");
+
 const transactionDialog = document.getElementById("transactionDialog");
 const transactionDialogForm = document.getElementById("transactionDialogForm");
-const transactionTypeSelect = document.getElementById("transactionTypeSelect");
-const transactionValueInput = document.getElementById("transactionValueInput");
+const transactionCategorySelect = document.getElementById("transactionCategorySelect");
+const transactionCategoryInput = document.getElementById("transactionCategoryInput");
+const transactionSubcategorySelect = document.getElementById("transactionSubcategorySelect");
+const transactionSubcategoryInput = document.getElementById("transactionSubcategoryInput");
+const transactionAmountInput = document.getElementById("transactionAmountInput");
 const transactionDateInput = document.getElementById("transactionDateInput");
+const transactionNoteInput = document.getElementById("transactionNoteInput");
 
 let syncState = "Idle";
 let statusNote = "";
 let syncTimer = null;
+let selectedCategory = "";
+let selectedSubcategory = "All";
+
+const NEW_OPTION_VALUE = "__new__";
 
 function formatTime(ts){
   if(!ts) return "";
@@ -112,27 +122,60 @@ function applyTheme(theme){
   document.documentElement.dataset.theme = theme;
 }
 
-function renderHeader(){
-  const { total } = computeTotals(rows);
+function renderHeader(filteredRows){
+  const total = computeTotal(filteredRows);
   elTotal.textContent = total !== 0 ? formatEUR(total) : "€0.00";
 }
 
-function renderAll({ focusRowId = null } = {}){
-  renderHeader();
-  renderChart(rows);
-  renderList(rows, {
+function renderFilters(){
+  const categories = getCategories(rows);
+  if(!categories.length){
+    categoryFilterSelect.innerHTML = `<option value="">No categories yet</option>`;
+    categoryFilterSelect.disabled = true;
+    subcategoryFilterSelect.innerHTML = `<option value="All">All</option>`;
+    subcategoryFilterSelect.disabled = true;
+    selectedCategory = "";
+    selectedSubcategory = "All";
+    return;
+  }
+
+  categoryFilterSelect.disabled = false;
+  categoryFilterSelect.innerHTML = categories.map((category) => (
+    `<option value="${esc(category)}">${esc(category)}</option>`
+  )).join("");
+
+  if(!categories.includes(selectedCategory)){
+    selectedCategory = categories[0];
+  }
+  categoryFilterSelect.value = selectedCategory;
+
+  updateSubcategoryFilter();
+}
+
+function updateSubcategoryFilter(){
+  const subcategories = getSubcategories(selectedCategory, rows);
+  subcategoryFilterSelect.disabled = false;
+  const options = ["All", ...subcategories];
+  subcategoryFilterSelect.innerHTML = options.map((subcategory) => (
+    `<option value="${esc(subcategory)}">${esc(subcategory)}</option>`
+  )).join("");
+
+  if(!options.includes(selectedSubcategory)){
+    selectedSubcategory = "All";
+  }
+  subcategoryFilterSelect.value = selectedSubcategory;
+}
+
+function renderAll(){
+  renderFilters();
+  const filteredRows = selectedCategory
+    ? getFilteredTransactions(selectedCategory, selectedSubcategory, rows)
+    : [];
+  renderHeader(filteredRows);
+  renderChart(filteredRows);
+  renderList(filteredRows, {
     root: listRoot,
-    setStatus,
-    onDelete: deleteRowById,
-    onUpdate: updateCell,
-    onAddEntry: openTransactionDialog,
-    onRowsChanged: () => {
-      renderHeader();
-      renderChart(rows);
-      saveCache();
-    },
-    supportsDate: columnConfig.date === "Date",
-    focusRowId
+    onDelete: deleteRowById
   });
 }
 
@@ -147,53 +190,121 @@ function markDirty(){
   saveCache();
 }
 
-function createEmptyRow({ assetName = "", entryName = "" } = {}){
+function createEmptyRow({ category = "", subcategory = "" } = {}){
   const tempId = `tmp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   return {
     ID: tempId,
-    Asset: assetName,
-    Entry: entryName,
-    Type: "Other",
-    Value: "",
-    Currency: "EUR",
+    Category: category,
+    Subcategory: subcategory,
     Date: toLocalDateTimeInputValue(new Date()),
-    Notes: "",
+    Amount: "",
+    Note: "",
+    Currency: "EUR",
     UpdatedAt: "",
     _row: ""
   };
 }
 
-function setTransactionDialogDefaults({ typeName = "" } = {}){
-  if(transactionTypeSelect){
-    transactionTypeSelect.value = typeName || "Other";
+function updateNewOptionVisibility(selectEl, inputEl){
+  if(!selectEl || !inputEl) return;
+  const showInput = selectEl.value === NEW_OPTION_VALUE;
+  inputEl.hidden = !showInput;
+  if(showInput){
+    requestAnimationFrame(() => inputEl.focus());
   }
-  if(transactionValueInput){
-    transactionValueInput.value = "";
-    transactionValueInput.classList.remove("invalid");
+}
+
+function setTransactionDialogDefaults(){
+  if(transactionAmountInput){
+    transactionAmountInput.value = "";
+    transactionAmountInput.classList.remove("invalid");
   }
   if(transactionDateInput){
     transactionDateInput.value = toLocalDateTimeInputValue(new Date());
   }
+  if(transactionNoteInput){
+    transactionNoteInput.value = "";
+  }
 }
 
-function openTransactionDialog({ typeName = "" } = {}){
+function buildCategoryOptions({ includeNew = true } = {}){
+  const categories = getCategories(rows);
+  const options = categories.map((category) => (
+    `<option value="${esc(category)}">${esc(category)}</option>`
+  ));
+  if(includeNew){
+    options.push(`<option value="${NEW_OPTION_VALUE}">Add new…</option>`);
+  }
+  return options.join("");
+}
+
+function buildSubcategoryOptions(category, { includeNew = true } = {}){
+  const subs = getSubcategories(category, rows);
+  const options = [
+    `<option value="">None</option>`,
+    ...subs.map((subcategory) => (
+      `<option value="${esc(subcategory)}">${esc(subcategory)}</option>`
+    ))
+  ];
+  if(includeNew){
+    options.push(`<option value="${NEW_OPTION_VALUE}">Add new…</option>`);
+  }
+  return options.join("");
+}
+
+function openTransactionDialog(){
   if(!transactionDialog) return;
-  setTransactionDialogDefaults({ typeName });
+
+  const categories = getCategories(rows);
+  transactionCategorySelect.innerHTML = buildCategoryOptions();
+
+  const lastCategory = localStorage.getItem(STORAGE_LAST_CATEGORY) || "";
+  const defaultCategory = categories.includes(lastCategory)
+    ? lastCategory
+    : (selectedCategory || categories[0] || "");
+
+  if(defaultCategory){
+    transactionCategorySelect.value = defaultCategory;
+  }else{
+    transactionCategorySelect.value = NEW_OPTION_VALUE;
+  }
+
+  transactionCategoryInput.value = "";
+  updateNewOptionVisibility(transactionCategorySelect, transactionCategoryInput);
+
+  const currentCategory = transactionCategorySelect.value === NEW_OPTION_VALUE
+    ? ""
+    : transactionCategorySelect.value;
+
+  transactionSubcategorySelect.innerHTML = buildSubcategoryOptions(currentCategory);
+
+  const lastSubcategory = localStorage.getItem(STORAGE_LAST_SUBCATEGORY) || "";
+  const subcategories = getSubcategories(currentCategory, rows);
+  if(subcategories.includes(lastSubcategory)){
+    transactionSubcategorySelect.value = lastSubcategory;
+  }else{
+    transactionSubcategorySelect.value = "";
+  }
+  transactionSubcategoryInput.value = "";
+  updateNewOptionVisibility(transactionSubcategorySelect, transactionSubcategoryInput);
+
+  setTransactionDialogDefaults();
   transactionDialog.showModal();
-  requestAnimationFrame(() => transactionTypeSelect?.focus());
+  requestAnimationFrame(() => transactionCategorySelect?.focus());
 }
 
-async function addEntryToAsset({ typeName, value, dateTime } = {}){
-  const assetName = String(typeName || "Other");
-  const newRow = createEmptyRow({ assetName, entryName: "" });
-  if(typeName) newRow.Type = typeName;
-  newRow.Asset = assetName;
-  if(value != null) newRow.Value = value;
-  if(dateTime) newRow.Date = dateTime;
+async function addTransaction({ category, subcategory, amount, dateTime, note } = {}){
+  const newRow = createEmptyRow({ category, subcategory });
+  newRow.Category = category;
+  newRow.Subcategory = subcategory;
+  newRow.Amount = amount;
+  newRow.Date = dateTime;
+  newRow.Note = note || "";
+
   setRows([...rows, newRow]);
   setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
   markDirty();
-  renderAll({ focusRowId: newRow.ID });
+  renderAll();
 }
 
 async function deleteRowById(id){
@@ -213,17 +324,9 @@ async function updateCell(id, column, value){
   markDirty();
 }
 
-function mapUpdateColumn(column){
-  if(column === "Asset") return columnConfig.asset === "Asset" ? "Asset" : "Name";
-  if(column === "Entry") return columnConfig.entry || "Entry";
-  if(column === "Date") return columnConfig.date || "Date";
-  return column;
-}
-
 async function applyQueueOperation(op, { keepalive = false } = {}){
   if(op.op === "updateCell"){
-    const column = mapUpdateColumn(op.column);
-    return apiPost({ action:"updateCell", id: op.id, column, value: op.value }, { keepalive });
+    return apiPost({ action:"updateCell", id: op.id, column: op.column, value: op.value }, { keepalive });
   }
   if(op.op === "deleteRow"){
     return apiPost({ action:"deleteRow", id: op.id }, { keepalive });
@@ -300,16 +403,14 @@ async function refreshFromServer({ allowReplaceWhenDirty = false } = {}){
   try{
     setStatus("Loading…");
     const data = await apiGet();
-    const config = detectColumns(data);
-    setMeta({ lastLoadAt: Date.now(), columns: config });
+    setMeta({ lastLoadAt: Date.now() });
 
-    const normalized = data.map((r) => normalizeRow(r, config));
+    const normalized = data.map((r) => normalizeRow(r));
     setRows(normalized);
-    setColumnConfig(config);
 
     saveCache();
     renderAll();
-    setStatus(`Loaded ${rows.length} asset(s)`);
+    setStatus(`Loaded ${rows.length} transaction${rows.length === 1 ? "" : "s"}`);
     if(!dirtyQueue.length){
       setSyncState(meta.lastSyncAt ? "Synced" : "Idle");
     }
@@ -412,26 +513,92 @@ btnSaveApi.onclick = async () => {
   await refreshFromServer({ allowReplaceWhenDirty: true });
 };
 
+categoryFilterSelect.addEventListener("change", () => {
+  selectedCategory = categoryFilterSelect.value;
+  selectedSubcategory = "All";
+  updateSubcategoryFilter();
+  renderAll();
+});
+
+subcategoryFilterSelect.addEventListener("change", () => {
+  selectedSubcategory = subcategoryFilterSelect.value || "All";
+  renderAll();
+});
+
+transactionCategorySelect.addEventListener("change", () => {
+  updateNewOptionVisibility(transactionCategorySelect, transactionCategoryInput);
+  const categoryValue = transactionCategorySelect.value === NEW_OPTION_VALUE
+    ? ""
+    : transactionCategorySelect.value;
+  transactionSubcategorySelect.innerHTML = buildSubcategoryOptions(categoryValue);
+  transactionSubcategorySelect.value = "";
+  transactionSubcategoryInput.value = "";
+  updateNewOptionVisibility(transactionSubcategorySelect, transactionSubcategoryInput);
+});
+
+transactionSubcategorySelect.addEventListener("change", () => {
+  updateNewOptionVisibility(transactionSubcategorySelect, transactionSubcategoryInput);
+});
+
 if(transactionDialogForm){
   transactionDialogForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const valueRaw = transactionValueInput.value.trim();
-    if(!valueRaw){
-      transactionValueInput.classList.add("invalid");
-      setStatus("Enter a value.");
+    let categoryValue = transactionCategorySelect.value;
+    if(categoryValue === NEW_OPTION_VALUE){
+      categoryValue = transactionCategoryInput.value.trim();
+      if(!categoryValue){
+        transactionCategoryInput.classList.add("invalid");
+        setStatus("Enter a category.");
+        return;
+      }
+    }
+    transactionCategoryInput.classList.remove("invalid");
+
+    let subcategoryValue = transactionSubcategorySelect.value;
+    if(subcategoryValue === NEW_OPTION_VALUE){
+      subcategoryValue = transactionSubcategoryInput.value.trim();
+      if(!subcategoryValue){
+        transactionSubcategoryInput.classList.add("invalid");
+        setStatus("Enter a subcategory.");
+        return;
+      }
+    }
+    transactionSubcategoryInput.classList.remove("invalid");
+
+    const amountRaw = transactionAmountInput.value.trim();
+    if(!amountRaw){
+      transactionAmountInput.classList.add("invalid");
+      setStatus("Enter an amount.");
       return;
     }
-    const valueNumber = toNumber(valueRaw);
-    if(!Number.isFinite(valueNumber)){
-      transactionValueInput.classList.add("invalid");
+    const amountNumber = toNumber(amountRaw);
+    if(!Number.isFinite(amountNumber)){
+      transactionAmountInput.classList.add("invalid");
       setStatus("Invalid number ❌");
       return;
     }
-    transactionValueInput.classList.remove("invalid");
+    transactionAmountInput.classList.remove("invalid");
 
-    const typeName = transactionTypeSelect.value || "Other";
     const dateTime = transactionDateInput.value || toLocalDateTimeInputValue(new Date());
-    await addEntryToAsset({ typeName, value: valueRaw, dateTime });
+    const note = transactionNoteInput.value.trim();
+    await addTransaction({
+      category: categoryValue,
+      subcategory: subcategoryValue || "",
+      amount: amountRaw,
+      dateTime,
+      note
+    });
+
+    selectedCategory = categoryValue;
+    selectedSubcategory = subcategoryValue || "All";
+    localStorage.setItem(STORAGE_LAST_CATEGORY, categoryValue);
+    if(subcategoryValue){
+      localStorage.setItem(STORAGE_LAST_SUBCATEGORY, subcategoryValue);
+    }else{
+      localStorage.removeItem(STORAGE_LAST_SUBCATEGORY);
+    }
+
+    renderAll();
     transactionDialog.close();
   });
 }
@@ -451,8 +618,7 @@ initChart({
   modeSelectEl: chartMode,
   pagesElement: chartPages,
   dotsElement: chartDots,
-  filterElement: timelineFilters,
-  onModeChange: () => renderChart(rows)
+  onModeChange: () => renderChart(getFilteredTransactions(selectedCategory, selectedSubcategory, rows))
 });
 
 if("serviceWorker" in navigator){
@@ -466,12 +632,9 @@ if("serviceWorker" in navigator){
 
 const cached = loadCache();
 if(cached.rows.length){
-  setRows(cached.rows);
+  setRows(cached.rows.map((row) => normalizeRow(row)));
   setDirtyQueue(cached.dirtyQueue || []);
   setMeta(cached.meta || {});
-  if(cached.meta?.columns){
-    setColumnConfig(cached.meta.columns);
-  }
   renderAll();
 }
 

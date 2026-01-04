@@ -230,6 +230,18 @@ body{
   font:inherit;
 }
 
+.filter-row{
+  display:flex;
+  gap:12px;
+  padding:16px;
+  border-bottom:1px solid var(--border);
+  flex-wrap:wrap;
+}
+
+.filter-row .field{
+  flex:1 1 180px;
+}
+
 .chart-pager{
   position:relative;
   overflow:hidden;
@@ -289,11 +301,73 @@ body{
   background:var(--accent-weak);
 }
 
-.asset-list{
+.transaction-list{
   display:flex;
   flex-direction:column;
   gap:12px;
   padding:16px;
+}
+
+.transaction-row{
+  border:1px solid var(--border);
+  border-radius:16px;
+  padding:12px 14px;
+  display:flex;
+  align-items:flex-start;
+  gap:12px;
+  justify-content:space-between;
+  background:var(--surface);
+}
+
+.transaction-main{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+}
+
+.transaction-title{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.transaction-amount{
+  font-weight:700;
+  font-size:18px;
+}
+
+.transaction-meta{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  font-size:12px;
+  color:var(--muted);
+}
+
+.transaction-category{
+  font-weight:600;
+  color:var(--text);
+}
+
+.transaction-sep{
+  color:var(--muted);
+}
+
+.transaction-note{
+  font-size:13px;
+  color:var(--muted);
+}
+
+.transaction-side{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px;
+}
+
+.transaction-date{
+  font-size:12px;
+  color:var(--muted);
 }
 .type-group{
   border:1px solid var(--border);

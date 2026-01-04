@@ -1,20 +1,25 @@
 import { toNumber } from "./format.js";
 
 export const CACHE_KEYS = {
-  rows: "pf_cache_rows_v1",
-  meta: "pf_cache_meta_v1",
-  dirtyQueue: "pf_dirty_queue_v1"
+  rows: "pf_cache_rows_v2",
+  meta: "pf_cache_meta_v2",
+  dirtyQueue: "pf_dirty_queue_v2"
+};
+
+export const COLUMN_NAMES = {
+  id: "ID",
+  category: "Category",
+  subcategory: "Subcategory",
+  date: "Date",
+  amount: "Amount",
+  note: "Note",
+  currency: "Currency",
+  updatedAt: "UpdatedAt"
 };
 
 export let rows = [];
 export let dirtyQueue = [];
-export let meta = { lastSyncAt: null, lastLoadAt: null, columns: null };
-export let columnConfig = {
-  asset: "Asset",
-  entry: "Entry",
-  date: "Date",
-  notes: "Notes"
-};
+export let meta = { lastSyncAt: null, lastLoadAt: null };
 
 export function setRows(nextRows){
   rows = nextRows;
@@ -28,149 +33,120 @@ export function setMeta(nextMeta){
   meta = { ...meta, ...nextMeta };
 }
 
-export function setColumnConfig(nextConfig){
-  columnConfig = { ...columnConfig, ...nextConfig };
-}
+export function normalizeRow(rawRow){
+  const rawCategory = String(rawRow[COLUMN_NAMES.category] ?? rawRow.Category ?? "").trim();
+  const rawSubcategory = String(rawRow[COLUMN_NAMES.subcategory] ?? rawRow.Subcategory ?? "").trim();
+  const rawDate = rawRow[COLUMN_NAMES.date] ?? rawRow.Date ?? "";
+  const rawAmount = rawRow[COLUMN_NAMES.amount] ?? rawRow.Amount ?? "";
+  const rawNote = rawRow[COLUMN_NAMES.note] ?? rawRow.Note ?? "";
+  const rawCurrency = rawRow[COLUMN_NAMES.currency] ?? rawRow.Currency ?? "EUR";
+  const rawUpdatedAt = rawRow[COLUMN_NAMES.updatedAt] ?? rawRow.UpdatedAt ?? "";
 
-export function detectColumns(rawRows = []){
-  const hasAsset = rawRows.some((r) => Object.prototype.hasOwnProperty.call(r, "Asset"));
-  const hasEntry = rawRows.some((r) => Object.prototype.hasOwnProperty.call(r, "Entry"));
-  const hasDate = rawRows.some((r) => Object.prototype.hasOwnProperty.call(r, "Date"));
-  const hasNotes = rawRows.some((r) => Object.prototype.hasOwnProperty.call(r, "Notes"));
-
-  const nextConfig = {
-    asset: hasAsset ? "Asset" : "Name",
-    entry: hasEntry ? "Entry" : null,
-    date: hasDate ? "Date" : null,
-    notes: hasNotes ? "Notes" : null
-  };
-  setColumnConfig(nextConfig);
-  return nextConfig;
-}
-
-export function normalizeRow(rawRow, config = columnConfig){
-  const rawType = String(rawRow.Type ?? "").trim();
-  const rawAsset = config.asset === "Asset" ? rawRow.Asset : rawRow.Name;
-  const assetSource = String(rawAsset ?? "").trim();
-  const typeValue = rawType || assetSource || "Other";
-  const assetValue = typeValue;
-  const entryValue = config.entry ? rawRow.Entry : "";
-  const dateValue = config.date === "Date" ? rawRow.Date : rawRow.UpdatedAt;
   return {
-    ID: rawRow.ID ?? "",
-    Asset: assetValue ?? "",
-    Entry: entryValue ?? "",
-    Type: typeValue,
-    Value: rawRow.Value ?? "",
-    Currency: rawRow.Currency ?? "EUR",
-    Date: dateValue ?? "",
-    Notes: rawRow.Notes ?? "",
-    UpdatedAt: rawRow.UpdatedAt ?? "",
+    ID: rawRow[COLUMN_NAMES.id] ?? rawRow.ID ?? "",
+    Category: rawCategory,
+    Subcategory: rawSubcategory,
+    Date: rawDate ?? "",
+    Amount: rawAmount ?? "",
+    Note: rawNote ?? "",
+    Currency: rawCurrency ?? "EUR",
+    UpdatedAt: rawUpdatedAt ?? "",
     _row: rawRow._row
   };
 }
 
-export function getAssetName(row){
-  return String(row.Type ?? "").trim() || "Other";
-}
-
-export function getRowDateTime(row){
-  const raw = String(row.Date ?? "").trim() || String(row.UpdatedAt ?? "").trim();
-  if(!raw){
-    return new Date();
-  }
+export function parseRowDate(row){
+  const raw = String(row.Date ?? row.UpdatedAt ?? "").trim();
+  if(!raw) return null;
   const parsed = new Date(raw);
-  if(Number.isNaN(parsed.getTime())){
-    return null;
-  }
+  if(Number.isNaN(parsed.getTime())) return null;
   return parsed;
 }
 
-function formatDateTimeKey(date){
-  const d = date instanceof Date ? date : new Date(date);
-  if(Number.isNaN(d.getTime())){
-    return String(date || "");
+export function getCategories(inputRows = rows){
+  const set = new Set();
+  for(const row of inputRows){
+    const name = String(row.Category ?? "").trim();
+    if(name) set.add(name);
   }
-  const pad = (num) => String(num).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return [...set].sort((a, b) => a.localeCompare(b));
 }
 
-export function getRowDateKey(row){
-  const raw = String(row.Date ?? "").trim() || String(row.UpdatedAt ?? "").trim();
-  if(!raw){
-    return formatDateTimeKey(new Date());
+export function getSubcategories(category, inputRows = rows){
+  if(!category) return [];
+  const set = new Set();
+  for(const row of inputRows){
+    if(String(row.Category ?? "").trim() !== category) continue;
+    const sub = String(row.Subcategory ?? "").trim();
+    if(sub) set.add(sub);
   }
-  const parsed = new Date(raw);
-  if(Number.isNaN(parsed.getTime())){
-    if(raw.includes("T")){
-      return raw.replace("T", " ").slice(0, 16);
-    }
-    if(raw.length >= 10){
-      return `${raw.slice(0, 10)} 00:00`;
-    }
-    return raw;
-  }
-  return formatDateTimeKey(parsed);
+  return [...set].sort((a, b) => a.localeCompare(b));
 }
 
-export function computeTotals(inputRows = rows){
+export function getFilteredTransactions(category, subcategoryOrAll, inputRows = rows){
+  if(!category) return [];
+  const wantsSubcategory = subcategoryOrAll && subcategoryOrAll !== "All";
+  const filtered = inputRows.filter((row) => {
+    if(String(row.Category ?? "").trim() !== category) return false;
+    if(wantsSubcategory){
+      return String(row.Subcategory ?? "").trim() === subcategoryOrAll;
+    }
+    return true;
+  });
+
+  return filtered.sort((a, b) => {
+    const dateA = parseRowDate(a);
+    const dateB = parseRowDate(b);
+    const timeA = dateA ? dateA.getTime() : 0;
+    const timeB = dateB ? dateB.getTime() : 0;
+    return timeB - timeA;
+  });
+}
+
+export function computeTotal(inputRows = rows){
   let total = 0;
-  const byType = new Map();
-  for(const r of inputRows){
-    const type = String(r.Type ?? "Other") || "Other";
-    const n = toNumber(r.Value);
-    const val = Number.isFinite(n) ? n : 0;
-    total += val;
-    byType.set(type, (byType.get(type) || 0) + val);
+  for(const row of inputRows){
+    const num = toNumber(row.Amount);
+    if(Number.isFinite(num)) total += num;
   }
-  return { total, byType };
+  return total;
 }
 
 export function buildChartData(mode, inputRows = rows){
   const map = new Map();
-  for(const r of inputRows){
-    const valN = toNumber(r.Value);
-    if(!Number.isFinite(valN) || valN <= 0) continue;
-
-    const key = mode === "type"
-      ? (String(r.Type ?? "Other") || "Other")
-      : getAssetName(r);
-
-    map.set(key, (map.get(key) || 0) + valN);
+  for(const row of inputRows){
+    const amount = toNumber(row.Amount);
+    if(!Number.isFinite(amount) || amount <= 0) continue;
+    const key = mode === "subcategory"
+      ? (String(row.Subcategory ?? "").trim() || "Uncategorized")
+      : (String(row.Category ?? "").trim() || "Uncategorized");
+    map.set(key, (map.get(key) || 0) + amount);
   }
 
-  const sorted = [...map.entries()].sort((a,b)=>b[1]-a[1]);
-  const TOP = 12;
-  if(sorted.length > TOP){
-    const top = sorted.slice(0, TOP);
-    const rest = sorted.slice(TOP).reduce((s, [,v]) => s + v, 0);
-    top.push(["Other", rest]);
-    return top.map(([name, value]) => ({ name, value }));
+  const sorted = [...map.entries()].sort((a, b) => b[1] - a[1]);
+  const top = 10;
+  if(sorted.length > top){
+    const keep = sorted.slice(0, top);
+    const rest = sorted.slice(top).reduce((sum, [, value]) => sum + value, 0);
+    keep.push(["Other", rest]);
+    return keep.map(([name, value]) => ({ name, value }));
   }
   return sorted.map(([name, value]) => ({ name, value }));
 }
 
-export function buildTimelineSeries(inputRows = rows, { assetFilter = null } = {}){
+export function buildTimelineSeries(inputRows = rows){
   const map = new Map();
-  for(const r of inputRows){
-    const asset = getAssetName(r);
-    if(assetFilter && assetFilter !== "All" && asset !== assetFilter) continue;
-    const valN = toNumber(r.Value);
-    if(!Number.isFinite(valN)) continue;
-    const dateKey = getRowDateKey(r);
-    map.set(dateKey, (map.get(dateKey) || 0) + valN);
+  for(const row of inputRows){
+    const amount = toNumber(row.Amount);
+    if(!Number.isFinite(amount)) continue;
+    const date = parseRowDate(row);
+    if(!date) continue;
+    const key = date.toISOString().slice(0, 10);
+    map.set(key, (map.get(key) || 0) + amount);
   }
   return [...map.entries()]
-    .sort((a,b) => a[0].localeCompare(b[0]))
+    .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([date, value]) => ({ date, value }));
-}
-
-export function listAssets(inputRows = rows){
-  const set = new Set();
-  for(const r of inputRows){
-    set.add(getAssetName(r));
-  }
-  return [...set].sort((a,b) => a.localeCompare(b));
 }
 
 export function loadCache(){
@@ -192,46 +168,28 @@ export function loadCache(){
   }catch{
     cachedMeta = {};
   }
-  if(cachedMeta?.columns){
-    setColumnConfig(cachedMeta.columns);
-  }
   return { rows: cachedRows, dirtyQueue: cachedQueue, meta: cachedMeta };
 }
 
 export function saveCache(){
   localStorage.setItem(CACHE_KEYS.rows, JSON.stringify(rows));
   localStorage.setItem(CACHE_KEYS.dirtyQueue, JSON.stringify(dirtyQueue));
-  localStorage.setItem(CACHE_KEYS.meta, JSON.stringify({
-    ...meta,
-    columns: columnConfig
-  }));
+  localStorage.setItem(CACHE_KEYS.meta, JSON.stringify(meta));
 }
 
 export function isTempId(id){
   return String(id || "").startsWith("tmp_");
 }
 
-export function buildAddPayload(row, config = columnConfig){
-  const payload = {
-    Type: row.Type ?? "Other",
-    Value: row.Value ?? "",
-    Currency: row.Currency ?? "EUR"
+export function buildAddPayload(row){
+  return {
+    [COLUMN_NAMES.category]: row.Category ?? "",
+    [COLUMN_NAMES.subcategory]: row.Subcategory ?? "",
+    [COLUMN_NAMES.date]: row.Date ?? "",
+    [COLUMN_NAMES.amount]: row.Amount ?? "",
+    [COLUMN_NAMES.note]: row.Note ?? "",
+    [COLUMN_NAMES.currency]: row.Currency ?? "EUR"
   };
-  if(config.asset === "Asset"){
-    payload.Asset = row.Asset ?? "";
-  }else{
-    payload.Name = row.Asset ?? "";
-  }
-  if(config.entry){
-    payload[config.entry] = row.Entry ?? "";
-  }
-  if(config.date){
-    payload[config.date] = row.Date ?? "";
-  }
-  if(config.notes){
-    payload[config.notes] = row.Notes ?? "";
-  }
-  return payload;
 }
 
 export function enqueueAddRow(queue, row){
