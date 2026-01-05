@@ -277,7 +277,8 @@ export function buildChartData(mode, inputRows = rows){
   return sorted.map(([name, value]) => ({ name, value }));
 }
 
-export function buildTimelineSeries(mode = "total", inputRows = rows){
+export function buildTimelineSeries(mode = "total", inputRows = rows, options = {}){
+  const { includeTotal = true } = options;
   const dateMap = new Map();
   const groupTotals = new Map();
   const useGroups = mode === "category" || mode === "subcategory";
@@ -312,9 +313,11 @@ export function buildTimelineSeries(mode = "total", inputRows = rows){
     return runningTotal;
   });
 
-  const series = [
-    { name: "Total", data: totalSeries, isTotal: true }
-  ];
+  const series = [];
+  const shouldIncludeTotal = includeTotal || !useGroups;
+  if(shouldIncludeTotal){
+    series.push({ name: "Total", data: totalSeries, isTotal: true });
+  }
 
   if(useGroups){
     const topGroups = [...groupTotals.entries()]
