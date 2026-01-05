@@ -20,6 +20,83 @@ export const COLUMN_NAMES = {
 export let rows = [];
 export let dirtyQueue = [];
 export let meta = { lastSyncAt: null, lastLoadAt: null };
+export let syncHeaders = { ...COLUMN_NAMES };
+
+const SYNC_HEADER_ALIASES = {
+  id: ["Id", "Record ID", "RecordId"],
+  category: ["Category", "Cat", "Type"],
+  subcategory: ["Subcategory", "Sub Category", "Sub-Category", "Subcat"],
+  date: ["Date", "Date/Time", "Datetime", "Timestamp"],
+  amount: ["Amount", "Value", "Amount (EUR)", "Amount(EUR)", "Total"],
+  note: ["Note", "Notes", "Memo", "Description"],
+  currency: ["Currency", "Curr", "Currency Code"],
+  updatedAt: ["UpdatedAt", "Updated At", "Updated", "Last Updated"]
+};
+
+function normalizeHeaderName(name){
+  return String(name ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_-]+/g, "");
+}
+
+function getAliasesForKey(key){
+  const primary = COLUMN_NAMES[key];
+  const aliases = SYNC_HEADER_ALIASES[key] || [];
+  return [primary, ...aliases].filter(Boolean);
+}
+
+function buildRowLookup(rawRow){
+  const normalizedMap = new Map();
+  if(rawRow && typeof rawRow === "object"){
+    for(const key of Object.keys(rawRow)){
+      normalizedMap.set(normalizeHeaderName(key), rawRow[key]);
+    }
+  }
+  return (aliases) => {
+    for(const alias of aliases){
+      if(rawRow && Object.prototype.hasOwnProperty.call(rawRow, alias)){
+        return rawRow[alias];
+      }
+      const normalized = normalizeHeaderName(alias);
+      if(normalizedMap.has(normalized)){
+        return normalizedMap.get(normalized);
+      }
+    }
+    return undefined;
+  };
+}
+
+function updateSyncHeaders(headerRow){
+  if(!Array.isArray(headerRow)) return;
+  const normalizedToIndex = new Map(
+    headerRow.map((value, idx) => [normalizeHeaderName(value), idx])
+  );
+  const nextHeaders = {};
+  for(const key of Object.keys(COLUMN_NAMES)){
+    const aliases = getAliasesForKey(key);
+    for(const alias of aliases){
+      const idx = normalizedToIndex.get(normalizeHeaderName(alias));
+      if(idx != null){
+        nextHeaders[key] = String(headerRow[idx] ?? COLUMN_NAMES[key]).trim() || COLUMN_NAMES[key];
+        break;
+      }
+    }
+  }
+  syncHeaders = { ...syncHeaders, ...nextHeaders };
+}
+
+export function resolveSyncHeader(column){
+  if(!column) return column;
+  const normalized = normalizeHeaderName(column);
+  for(const key of Object.keys(COLUMN_NAMES)){
+    const aliases = getAliasesForKey(key);
+    if(aliases.some((alias) => normalizeHeaderName(alias) === normalized)){
+      return syncHeaders[key] || COLUMN_NAMES[key];
+    }
+  }
+  return column;
+}
 
 export function setRows(nextRows){
   rows = nextRows;
@@ -34,16 +111,17 @@ export function setMeta(nextMeta){
 }
 
 export function normalizeRow(rawRow){
-  const rawCategory = String(rawRow[COLUMN_NAMES.category] ?? rawRow.Category ?? "").trim();
-  const rawSubcategory = String(rawRow[COLUMN_NAMES.subcategory] ?? rawRow.Subcategory ?? "").trim();
-  const rawDate = rawRow[COLUMN_NAMES.date] ?? rawRow.Date ?? "";
-  const rawAmount = rawRow[COLUMN_NAMES.amount] ?? rawRow.Amount ?? "";
-  const rawNote = rawRow[COLUMN_NAMES.note] ?? rawRow.Note ?? "";
-  const rawCurrency = rawRow[COLUMN_NAMES.currency] ?? rawRow.Currency ?? "EUR";
-  const rawUpdatedAt = rawRow[COLUMN_NAMES.updatedAt] ?? rawRow.UpdatedAt ?? "";
+  const lookup = buildRowLookup(rawRow);
+  const rawCategory = String(lookup(getAliasesForKey("category")) ?? "").trim();
+  const rawSubcategory = String(lookup(getAliasesForKey("subcategory")) ?? "").trim();
+  const rawDate = lookup(getAliasesForKey("date")) ?? "";
+  const rawAmount = lookup(getAliasesForKey("amount")) ?? "";
+  const rawNote = lookup(getAliasesForKey("note")) ?? "";
+  const rawCurrency = lookup(getAliasesForKey("currency")) ?? "EUR";
+  const rawUpdatedAt = lookup(getAliasesForKey("updatedAt")) ?? "";
 
   return {
-    ID: rawRow[COLUMN_NAMES.id] ?? rawRow.ID ?? "",
+    ID: lookup(getAliasesForKey("id")) ?? "",
     Category: rawCategory,
     Subcategory: rawSubcategory,
     Date: rawDate ?? "",
@@ -75,23 +153,36 @@ export function normalizeRowsFromApi(data){
 
   const first = data[0];
   if(first && typeof first === "object" && !Array.isArray(first)){
+    updateSyncHeaders(Object.keys(first));
     const normalized = data.map((row) => normalizeRow(row));
     return normalized.filter(isMeaningfulRow);
   }
 
   if(Array.isArray(first)){
     const header = first.map((value) => String(value ?? "").trim());
-    const headerIndex = new Map(header.map((name, idx) => [name, idx]));
-    const columnNames = Object.values(COLUMN_NAMES);
-    const hasKnownHeader = columnNames.some((name) => headerIndex.has(name));
+    updateSyncHeaders(header);
+    const headerIndex = new Map(header.map((name, idx) => [normalizeHeaderName(name), idx]));
+    const columnKeys = Object.keys(COLUMN_NAMES);
+    const hasKnownHeader = columnKeys.some((key) => {
+      const aliases = getAliasesForKey(key);
+      return aliases.some((alias) => headerIndex.has(normalizeHeaderName(alias)));
+    });
     if(!hasKnownHeader) return null;
 
     const normalized = data.slice(1).map((row) => {
       const obj = {};
-      for(const name of columnNames){
-        const idx = headerIndex.get(name);
+      for(const key of columnKeys){
+        const aliases = getAliasesForKey(key);
+        let idx = null;
+        for(const alias of aliases){
+          const match = headerIndex.get(normalizeHeaderName(alias));
+          if(match != null){
+            idx = match;
+            break;
+          }
+        }
         if(idx != null && idx < row.length){
-          obj[name] = row[idx];
+          obj[COLUMN_NAMES[key]] = row[idx];
         }
       }
       return normalizeRow(obj);
@@ -234,12 +325,12 @@ export function isTempId(id){
 
 export function buildAddPayload(row){
   return {
-    [COLUMN_NAMES.category]: row.Category ?? "",
-    [COLUMN_NAMES.subcategory]: row.Subcategory ?? "",
-    [COLUMN_NAMES.date]: row.Date ?? "",
-    [COLUMN_NAMES.amount]: row.Amount ?? "",
-    [COLUMN_NAMES.note]: row.Note ?? "",
-    [COLUMN_NAMES.currency]: row.Currency ?? "EUR"
+    [syncHeaders.category || COLUMN_NAMES.category]: row.Category ?? "",
+    [syncHeaders.subcategory || COLUMN_NAMES.subcategory]: row.Subcategory ?? "",
+    [syncHeaders.date || COLUMN_NAMES.date]: row.Date ?? "",
+    [syncHeaders.amount || COLUMN_NAMES.amount]: row.Amount ?? "",
+    [syncHeaders.note || COLUMN_NAMES.note]: row.Note ?? "",
+    [syncHeaders.currency || COLUMN_NAMES.currency]: row.Currency ?? "EUR"
   };
 }
 

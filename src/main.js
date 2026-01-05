@@ -14,6 +14,7 @@ import {
   getCategories,
   getSubcategories,
   getFilteredTransactions,
+  resolveSyncHeader,
   loadCache,
   saveCache,
   enqueueAddRow,
@@ -347,7 +348,8 @@ async function updateCell(id, column, value){
 
 async function applyQueueOperation(op, { keepalive = false } = {}){
   if(op.op === "updateCell"){
-    return apiPost({ action:"updateCell", id: op.id, column: op.column, value: op.value }, { keepalive });
+    const column = resolveSyncHeader(op.column);
+    return apiPost({ action:"updateCell", id: op.id, column, value: op.value }, { keepalive });
   }
   if(op.op === "deleteRow"){
     return apiPost({ action:"deleteRow", id: op.id }, { keepalive });
