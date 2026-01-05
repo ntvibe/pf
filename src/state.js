@@ -144,9 +144,13 @@ export function buildTimelineSeries(inputRows = rows){
     const key = date.toISOString().slice(0, 10);
     map.set(key, (map.get(key) || 0) + amount);
   }
+  let runningTotal = 0;
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, value]) => ({ date, value }));
+    .map(([date, value]) => {
+      runningTotal += value;
+      return { date, value: runningTotal };
+    });
 }
 
 export function loadCache(){

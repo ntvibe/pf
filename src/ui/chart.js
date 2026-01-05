@@ -262,7 +262,7 @@ function renderTimeline(rows){
     },
     series: [
       {
-        name: "Spending",
+        name: "Portfolio value",
         type: "line",
         smooth: true,
         data: values,
