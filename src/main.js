@@ -49,18 +49,22 @@ const themeSelect = document.getElementById("themeSelect");
 
 const transactionDialog = document.getElementById("transactionDialog");
 const transactionDialogForm = document.getElementById("transactionDialogForm");
+const transactionDialogTitle = document.getElementById("transactionDialogTitle");
+const transactionDialogSubtitle = document.getElementById("transactionDialogSubtitle");
 const transactionCategorySelect = document.getElementById("transactionCategorySelect");
 const transactionCategoryInput = document.getElementById("transactionCategoryInput");
 const transactionSubcategorySelect = document.getElementById("transactionSubcategorySelect");
 const transactionSubcategoryInput = document.getElementById("transactionSubcategoryInput");
-const transactionAmountInput = document.getElementById("transactionAmountInput");
+const transactionNameInput = document.getElementById("transactionNameInput");
+const transactionValueInput = document.getElementById("transactionValueInput");
 const transactionDateInput = document.getElementById("transactionDateInput");
-const transactionNoteInput = document.getElementById("transactionNoteInput");
+const transactionNotesInput = document.getElementById("transactionNotesInput");
 
 let syncState = "Idle";
 let statusNote = "";
 let syncTimer = null;
 let selectedSubcategory = "All";
+let editingId = null;
 
 const NEW_OPTION_VALUE = "__new__";
 const ALL_CATEGORIES = "__all__";
@@ -195,6 +199,7 @@ function renderAll(){
   renderList(filteredRows, {
     root: listRoot,
     onDelete: deleteRowById,
+    onEdit: openEditTransactionDialog,
     activeCategory,
     activeSubcategory: selectedSubcategory
   });
@@ -217,10 +222,11 @@ function createEmptyRow({ category = "", subcategory = "" } = {}){
     ID: tempId,
     Category: category,
     Subcategory: subcategory,
-    Date: toLocalDateTimeInputValue(new Date()),
-    Amount: "",
-    Note: "",
+    Name: "",
+    Value: "",
     Currency: "EUR",
+    Date: toLocalDateTimeInputValue(new Date()),
+    Notes: "",
     UpdatedAt: "",
     _row: ""
   };
@@ -236,15 +242,18 @@ function updateNewOptionVisibility(selectEl, inputEl){
 }
 
 function setTransactionDialogDefaults(){
-  if(transactionAmountInput){
-    transactionAmountInput.value = "";
-    transactionAmountInput.classList.remove("invalid");
+  if(transactionNameInput){
+    transactionNameInput.value = "";
+  }
+  if(transactionValueInput){
+    transactionValueInput.value = "";
+    transactionValueInput.classList.remove("invalid");
   }
   if(transactionDateInput){
     transactionDateInput.value = toLocalDateTimeInputValue(new Date());
   }
-  if(transactionNoteInput){
-    transactionNoteInput.value = "";
+  if(transactionNotesInput){
+    transactionNotesInput.value = "";
   }
 }
 
@@ -273,8 +282,22 @@ function buildSubcategoryOptions(category, { includeNew = true } = {}){
   return options.join("");
 }
 
+function setTransactionDialogMode({ title, subtitle } = {}){
+  if(transactionDialogTitle){
+    transactionDialogTitle.textContent = title || "New entry";
+  }
+  if(transactionDialogSubtitle){
+    transactionDialogSubtitle.textContent = subtitle || "Record a new transaction.";
+  }
+}
+
 function openTransactionDialog(){
   if(!transactionDialog) return;
+  editingId = null;
+  setTransactionDialogMode({
+    title: "New entry",
+    subtitle: "Record a new transaction."
+  });
 
   const categories = getCategories(rows);
   transactionCategorySelect.innerHTML = buildCategoryOptions();
@@ -315,13 +338,68 @@ function openTransactionDialog(){
   requestAnimationFrame(() => transactionCategorySelect?.focus());
 }
 
-async function addTransaction({ category, subcategory, amount, dateTime, note } = {}){
+function openEditTransactionDialog(id){
+  const row = rows.find((candidate) => String(candidate.ID) === String(id));
+  if(!row || !transactionDialog) return;
+  editingId = String(row.ID);
+  setTransactionDialogMode({
+    title: "Edit entry",
+    subtitle: "Update this transaction."
+  });
+
+  const categories = getCategories(rows);
+  transactionCategorySelect.innerHTML = buildCategoryOptions();
+
+  const categoryValue = String(row.Category ?? "").trim();
+  if(categories.includes(categoryValue)){
+    transactionCategorySelect.value = categoryValue;
+  }else{
+    transactionCategorySelect.value = NEW_OPTION_VALUE;
+    transactionCategoryInput.value = categoryValue;
+  }
+  updateNewOptionVisibility(transactionCategorySelect, transactionCategoryInput);
+
+  transactionSubcategorySelect.innerHTML = buildSubcategoryOptions(categoryValue);
+  const subcategoryValue = String(row.Subcategory ?? "").trim();
+  const subs = getSubcategories(categoryValue, rows);
+  if(subs.includes(subcategoryValue)){
+    transactionSubcategorySelect.value = subcategoryValue;
+  }else if(subcategoryValue){
+    transactionSubcategorySelect.value = NEW_OPTION_VALUE;
+    transactionSubcategoryInput.value = subcategoryValue;
+  }else{
+    transactionSubcategorySelect.value = "";
+  }
+  updateNewOptionVisibility(transactionSubcategorySelect, transactionSubcategoryInput);
+
+  if(transactionNameInput){
+    transactionNameInput.value = String(row.Name ?? "");
+  }
+  if(transactionValueInput){
+    transactionValueInput.value = String(row.Value ?? "");
+    transactionValueInput.classList.remove("invalid");
+  }
+  if(transactionDateInput){
+    transactionDateInput.value = row.Date
+      ? toLocalDateTimeInputValue(row.Date)
+      : toLocalDateTimeInputValue(new Date());
+  }
+  if(transactionNotesInput){
+    transactionNotesInput.value = String(row.Notes ?? "");
+  }
+
+  transactionDialog.showModal();
+  requestAnimationFrame(() => transactionNameInput?.focus());
+}
+
+async function addTransaction({ category, subcategory, name, value, dateTime, notes } = {}){
   const newRow = createEmptyRow({ category, subcategory });
   newRow.Category = category;
   newRow.Subcategory = subcategory;
-  newRow.Amount = amount;
+  newRow.Name = name || "";
+  newRow.Value = value;
   newRow.Date = dateTime;
-  newRow.Note = note || "";
+  newRow.Notes = notes || "";
 
   setRows([...rows, newRow]);
   setDirtyQueue(enqueueAddRow(dirtyQueue, newRow));
@@ -529,6 +607,17 @@ btnCloseConnect.onclick = () => {
   hideConnectPanel({ enableControls: hasValidUrl });
 };
 
+if(transactionDialog){
+  transactionDialog.addEventListener("close", () => {
+    editingId = null;
+    setTransactionDialogMode({
+      title: "New entry",
+      subtitle: "Record a new transaction."
+    });
+    setTransactionDialogDefaults();
+  });
+}
+
 btnSaveApi.onclick = async () => {
   const cleaned = apiUrlInput.value.trim();
   if(!cleaned || !isValidAppsScriptUrl(cleaned)){
@@ -569,6 +658,16 @@ transactionSubcategorySelect.addEventListener("change", () => {
   updateNewOptionVisibility(transactionSubcategorySelect, transactionSubcategoryInput);
 });
 
+if(transactionDateInput){
+  const showPicker = () => {
+    if(typeof transactionDateInput.showPicker === "function"){
+      transactionDateInput.showPicker();
+    }
+  };
+  transactionDateInput.addEventListener("focus", showPicker);
+  transactionDateInput.addEventListener("click", showPicker);
+}
+
 if(transactionDialogForm){
   transactionDialogForm.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -594,29 +693,51 @@ if(transactionDialogForm){
     }
     transactionSubcategoryInput.classList.remove("invalid");
 
-    const amountRaw = transactionAmountInput.value.trim();
-    if(!amountRaw){
-      transactionAmountInput.classList.add("invalid");
-      setStatus("Enter an amount.");
+    const nameValue = transactionNameInput.value.trim();
+    const valueRaw = transactionValueInput.value.trim();
+    if(!valueRaw){
+      transactionValueInput.classList.add("invalid");
+      setStatus("Enter a value.");
       return;
     }
-    const amountNumber = toNumber(amountRaw);
-    if(!Number.isFinite(amountNumber)){
-      transactionAmountInput.classList.add("invalid");
+    const valueNumber = toNumber(valueRaw);
+    if(!Number.isFinite(valueNumber)){
+      transactionValueInput.classList.add("invalid");
       setStatus("Invalid number ❌");
       return;
     }
-    transactionAmountInput.classList.remove("invalid");
+    transactionValueInput.classList.remove("invalid");
 
     const dateTime = transactionDateInput.value || toLocalDateTimeInputValue(new Date());
-    const note = transactionNoteInput.value.trim();
-    await addTransaction({
-      category: categoryValue,
-      subcategory: subcategoryValue || "",
-      amount: amountRaw,
-      dateTime,
-      note
-    });
+    const notes = transactionNotesInput.value.trim();
+
+    if(editingId){
+      const target = rows.find((candidate) => String(candidate.ID) === String(editingId));
+      if(target){
+        const updates = [
+          ["Category", categoryValue],
+          ["Subcategory", subcategoryValue || ""],
+          ["Name", nameValue],
+          ["Value", valueRaw],
+          ["Date", dateTime],
+          ["Notes", notes]
+        ];
+        for(const [column, value] of updates){
+          if(String(target[column] ?? "") !== String(value ?? "")){
+            await updateCell(editingId, column, value);
+          }
+        }
+      }
+    }else{
+      await addTransaction({
+        category: categoryValue,
+        subcategory: subcategoryValue || "",
+        name: nameValue,
+        value: valueRaw,
+        dateTime,
+        notes
+      });
+    }
 
     if(selectedCategory !== ALL_CATEGORIES){
       selectedCategory = categoryValue;
@@ -634,6 +755,7 @@ if(transactionDialogForm){
 
     renderAll();
     transactionDialog.close();
+    editingId = null;
   });
 }
 
@@ -658,10 +780,14 @@ initChart({
 if(versionIndicator){
   versionIndicator.textContent = `v${APP_VERSION}`;
   const updateIndicator = () => {
-    versionIndicator.classList.toggle("visible", window.scrollY > 80);
+    const scrollPosition = window.scrollY + window.innerHeight;
+    const threshold = document.body.scrollHeight - 8;
+    const shouldShow = scrollPosition >= threshold && window.scrollY > 0;
+    versionIndicator.classList.toggle("visible", shouldShow);
   };
   updateIndicator();
   window.addEventListener("scroll", updateIndicator, { passive: true });
+  window.addEventListener("resize", updateIndicator);
 }
 
 if("serviceWorker" in navigator){

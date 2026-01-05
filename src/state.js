@@ -10,10 +10,11 @@ export const COLUMN_NAMES = {
   id: "ID",
   category: "Category",
   subcategory: "Subcategory",
-  date: "Date",
-  amount: "Amount",
-  note: "Note",
+  name: "Name",
+  value: "Value",
   currency: "Currency",
+  date: "Date",
+  notes: "Notes",
   updatedAt: "UpdatedAt"
 };
 
@@ -26,9 +27,10 @@ const SYNC_HEADER_ALIASES = {
   id: ["Id", "Record ID", "RecordId"],
   category: ["Category", "Cat", "Type"],
   subcategory: ["Subcategory", "Sub Category", "Sub-Category", "Subcat"],
+  name: ["Name", "Title", "Label"],
+  value: ["Value", "Amount", "Amount (EUR)", "Amount(EUR)", "Total"],
+  notes: ["Notes", "Note", "Memo", "Description"],
   date: ["Date", "Date/Time", "Datetime", "Timestamp"],
-  amount: ["Amount", "Value", "Amount (EUR)", "Amount(EUR)", "Total"],
-  note: ["Note", "Notes", "Memo", "Description"],
   currency: ["Currency", "Curr", "Currency Code"],
   updatedAt: ["UpdatedAt", "Updated At", "Updated", "Last Updated"]
 };
@@ -114,9 +116,10 @@ export function normalizeRow(rawRow){
   const lookup = buildRowLookup(rawRow);
   const rawCategory = String(lookup(getAliasesForKey("category")) ?? "").trim();
   const rawSubcategory = String(lookup(getAliasesForKey("subcategory")) ?? "").trim();
+  const rawName = String(lookup(getAliasesForKey("name")) ?? "").trim();
+  const rawValue = lookup(getAliasesForKey("value")) ?? "";
   const rawDate = lookup(getAliasesForKey("date")) ?? "";
-  const rawAmount = lookup(getAliasesForKey("amount")) ?? "";
-  const rawNote = lookup(getAliasesForKey("note")) ?? "";
+  const rawNotes = lookup(getAliasesForKey("notes")) ?? "";
   const rawCurrency = lookup(getAliasesForKey("currency")) ?? "EUR";
   const rawUpdatedAt = lookup(getAliasesForKey("updatedAt")) ?? "";
 
@@ -124,10 +127,11 @@ export function normalizeRow(rawRow){
     ID: lookup(getAliasesForKey("id")) ?? "",
     Category: rawCategory,
     Subcategory: rawSubcategory,
-    Date: rawDate ?? "",
-    Amount: rawAmount ?? "",
-    Note: rawNote ?? "",
+    Name: rawName,
+    Value: rawValue ?? "",
     Currency: rawCurrency ?? "EUR",
+    Date: rawDate ?? "",
+    Notes: rawNotes ?? "",
     UpdatedAt: rawUpdatedAt ?? "",
     _row: rawRow._row
   };
@@ -138,10 +142,11 @@ function isMeaningfulRow(row){
     row.ID,
     row.Category,
     row.Subcategory,
-    row.Date,
-    row.Amount,
-    row.Note,
+    row.Name,
+    row.Value,
     row.Currency,
+    row.Date,
+    row.Notes,
     row.UpdatedAt
   ];
   return fields.some((value) => String(value ?? "").trim() !== "");
@@ -244,7 +249,7 @@ export function getFilteredTransactions(category, subcategoryOrAll, inputRows = 
 export function computeTotal(inputRows = rows){
   let total = 0;
   for(const row of inputRows){
-    const num = toNumber(row.Amount);
+    const num = toNumber(row.Value);
     if(Number.isFinite(num)) total += num;
   }
   return total;
@@ -253,12 +258,12 @@ export function computeTotal(inputRows = rows){
 export function buildChartData(mode, inputRows = rows){
   const map = new Map();
   for(const row of inputRows){
-    const amount = toNumber(row.Amount);
-    if(!Number.isFinite(amount) || amount <= 0) continue;
+    const value = toNumber(row.Value);
+    if(!Number.isFinite(value) || value <= 0) continue;
     const key = mode === "subcategory"
       ? (String(row.Subcategory ?? "").trim() || "Uncategorized")
       : (String(row.Category ?? "").trim() || "Uncategorized");
-    map.set(key, (map.get(key) || 0) + amount);
+    map.set(key, (map.get(key) || 0) + value);
   }
 
   const sorted = [...map.entries()].sort((a, b) => b[1] - a[1]);
@@ -275,12 +280,12 @@ export function buildChartData(mode, inputRows = rows){
 export function buildTimelineSeries(inputRows = rows){
   const map = new Map();
   for(const row of inputRows){
-    const amount = toNumber(row.Amount);
-    if(!Number.isFinite(amount)) continue;
+    const value = toNumber(row.Value);
+    if(!Number.isFinite(value)) continue;
     const date = parseRowDate(row);
     if(!date) continue;
     const key = date.toISOString().slice(0, 10);
-    map.set(key, (map.get(key) || 0) + amount);
+    map.set(key, (map.get(key) || 0) + value);
   }
   let runningTotal = 0;
   return [...map.entries()]
@@ -327,10 +332,11 @@ export function buildAddPayload(row){
   return {
     [syncHeaders.category || COLUMN_NAMES.category]: row.Category ?? "",
     [syncHeaders.subcategory || COLUMN_NAMES.subcategory]: row.Subcategory ?? "",
+    [syncHeaders.name || COLUMN_NAMES.name]: row.Name ?? "",
+    [syncHeaders.value || COLUMN_NAMES.value]: row.Value ?? "",
+    [syncHeaders.currency || COLUMN_NAMES.currency]: row.Currency ?? "EUR",
     [syncHeaders.date || COLUMN_NAMES.date]: row.Date ?? "",
-    [syncHeaders.amount || COLUMN_NAMES.amount]: row.Amount ?? "",
-    [syncHeaders.note || COLUMN_NAMES.note]: row.Note ?? "",
-    [syncHeaders.currency || COLUMN_NAMES.currency]: row.Currency ?? "EUR"
+    [syncHeaders.notes || COLUMN_NAMES.notes]: row.Notes ?? ""
   };
 }
 

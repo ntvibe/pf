@@ -34,7 +34,7 @@ function groupRows(rows){
 
 function totalRows(rows){
   return rows.reduce((sum, row) => {
-    const value = toNumber(row.Amount);
+    const value = toNumber(row.Value);
     return Number.isFinite(value) ? sum + value : sum;
   }, 0);
 }
@@ -52,6 +52,7 @@ function sortRowsByDate(rows){
 export function renderList(rows, {
   root,
   onDelete,
+  onEdit,
   activeCategory = "",
   activeSubcategory = "All"
 }){
@@ -79,9 +80,10 @@ export function renderList(rows, {
 
       const transactionHtml = items.map((row) => {
         const id = String(row.ID ?? "");
-        const amountNumber = toNumber(row.Amount);
+        const amountNumber = toNumber(row.Value);
         const amountLabel = Number.isFinite(amountNumber) ? formatEUR(amountNumber) : "€0.00";
-        const note = String(row.Note ?? "").trim();
+        const name = String(row.Name ?? "").trim();
+        const notes = String(row.Notes ?? "").trim();
         const dateLabel = formatDateDisplay(row);
         const categoryLabel = String(row.Category ?? "").trim() || "Uncategorized";
         const subLabel = String(row.Subcategory ?? "").trim() || "Uncategorized";
@@ -90,19 +92,26 @@ export function renderList(rows, {
           <details class="transaction-card" data-id="${esc(id)}">
             <summary class="transaction-summary">
               <span class="material-symbols-rounded list-chevron" aria-hidden="true">expand_more</span>
+              <span class="transaction-name">${esc(name || "Untitled")}</span>
               <span class="transaction-value">${esc(amountLabel)}</span>
-              <span class="transaction-date">${esc(dateLabel || "—")}</span>
             </summary>
             <div class="transaction-details">
               <div class="transaction-meta-row">
                 <span>${esc(categoryLabel)}</span>
                 <span class="transaction-sep">•</span>
                 <span>${esc(subLabel)}</span>
+                <span class="transaction-sep">•</span>
+                <span class="transaction-date">${esc(dateLabel || "—")}</span>
               </div>
-              <div class="transaction-note">${esc(note || "—")}</div>
-              <button class="delete-btn" data-action="delete" type="button" aria-label="Delete transaction">
-                <span class="material-symbols-rounded" aria-hidden="true">delete</span>
-              </button>
+              <div class="transaction-note">${esc(notes || "—")}</div>
+              <div class="transaction-actions">
+                <button class="secondary-btn" data-action="edit" type="button" aria-label="Edit transaction">
+                  <span class="material-symbols-rounded" aria-hidden="true">edit</span>
+                </button>
+                <button class="delete-btn" data-action="delete" type="button" aria-label="Delete transaction">
+                  <span class="material-symbols-rounded" aria-hidden="true">delete</span>
+                </button>
+              </div>
             </div>
           </details>
         `;
@@ -154,6 +163,15 @@ export function renderList(rows, {
         console.error(err);
         btn.disabled = false;
       }
+    });
+  });
+
+  root.querySelectorAll('button[data-action="edit"]').forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const rowEl = btn.closest(".transaction-card");
+      const id = rowEl?.dataset?.id;
+      if(!id || !onEdit) return;
+      onEdit(id);
     });
   });
 }
