@@ -260,11 +260,12 @@ function renderPie(rows, mode){
   }, true);
 }
 
-function renderTimeline(rows){
+function renderTimeline(rows, mode){
   if(!timelineChart) return;
-  const seriesData = buildTimelineSeries(rows);
-  const dates = seriesData.map((d) => d.date);
-  const values = seriesData.map((d) => d.value);
+  const currentMode = mode || modeSelect?.value || "category";
+  const timelineData = buildTimelineSeries(currentMode, rows);
+  const dates = timelineData.dates;
+  const seriesData = timelineData.series;
 
   timelineChart.setOption({
     animation: true,
@@ -275,7 +276,14 @@ function renderTimeline(rows){
       trigger: "axis",
       valueFormatter: (v) => formatEUR(v)
     },
-    grid: { top: 24, left: 12, right: 18, bottom: 30, containLabel: true },
+    legend: {
+      show: seriesData.length > 1,
+      type: "scroll",
+      top: 0,
+      left: 0,
+      right: 0
+    },
+    grid: { top: 52, left: 12, right: 18, bottom: 30, containLabel: true },
     xAxis: {
       type: "category",
       data: dates,
@@ -288,17 +296,15 @@ function renderTimeline(rows){
       axisLabel: { color: "#64748b" },
       splitLine: { lineStyle: { color: "#e2e8f0" } }
     },
-    series: [
-      {
-        name: "Portfolio value",
-        type: "line",
-        smooth: true,
-        data: values,
-        showSymbol: false,
-        lineStyle: { width: 3, color: "#2563eb" },
-        areaStyle: { color: "rgba(37, 99, 235, 0.15)" }
-      }
-    ]
+    series: seriesData.map((entry) => ({
+      name: entry.name,
+      type: "line",
+      smooth: true,
+      data: entry.data,
+      showSymbol: false,
+      lineStyle: entry.isTotal ? { width: 3, color: "#2563eb" } : { width: 2 },
+      areaStyle: entry.isTotal ? { color: "rgba(37, 99, 235, 0.15)" } : undefined
+    }))
   }, true);
 }
 
@@ -306,6 +312,6 @@ export function renderChart(rows, mode){
   if(!pieChart || !timelineChart) return;
   lastRows = rows;
   renderPie(rows, mode);
-  renderTimeline(rows);
+  renderTimeline(rows, mode);
   updateDots();
 }
