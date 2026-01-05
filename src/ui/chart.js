@@ -6,9 +6,11 @@ let timelineChart = null;
 let modeSelect = null;
 let pagesEl = null;
 let dotsEl = null;
+let toggleButtonEl = null;
 let currentPage = 0;
 let lastRows = [];
 let resizeHandlerAttached = false;
+let transitionHandlerAttached = false;
 
 export function initChart({
   pieEl,
@@ -16,6 +18,7 @@ export function initChart({
   modeSelectEl,
   pagesElement,
   dotsElement,
+  toggleButtonEl: toggleButtonElement,
   onModeChange
 }){
   if(!pieEl || !timelineEl || typeof echarts === "undefined") return;
@@ -47,6 +50,14 @@ export function initChart({
 
   if(pagesEl){
     setupPager(pagesEl);
+    if(!transitionHandlerAttached){
+      pagesEl.addEventListener("transitionend", (event) => {
+        if(event.propertyName !== "transform") return;
+        pieChart && pieChart.resize();
+        timelineChart && timelineChart.resize();
+      });
+      transitionHandlerAttached = true;
+    }
   }
 
   if(dotsEl){
@@ -57,6 +68,15 @@ export function initChart({
       if(Number.isFinite(idx)) setPage(idx);
     });
   }
+
+  if(toggleButtonElement && !toggleButtonEl){
+    toggleButtonEl = toggleButtonElement;
+    toggleButtonEl.addEventListener("click", () => {
+      setPage(currentPage === 0 ? 1 : 0);
+    });
+  }
+
+  updateToggleButton();
 }
 
 function setupPager(container){
@@ -140,9 +160,10 @@ function setPage(index){
   if(clamped === currentPage) return;
   currentPage = clamped;
   if(pagesEl){
-    pagesEl.style.transform = `translateX(-${index * 100}%)`;
+    pagesEl.style.transform = `translateX(-${clamped * 100}%)`;
   }
   updateDots();
+  updateToggleButton();
   if(pieChart && timelineChart){
     setTimeout(() => {
       pieChart.resize();
@@ -156,6 +177,13 @@ function updateDots(){
   dotsEl.innerHTML = [0, 1].map((idx) => (
     `<button class="pager-dot ${idx === currentPage ? "active" : ""}" type="button" data-index="${idx}" aria-label="Chart page ${idx + 1}"></button>`
   )).join("");
+}
+
+function updateToggleButton(){
+  if(!toggleButtonEl) return;
+  const isTimeline = currentPage === 1;
+  toggleButtonEl.textContent = isTimeline ? "Pie chart" : "Timeline";
+  toggleButtonEl.setAttribute("aria-label", isTimeline ? "Show pie chart" : "Show timeline");
 }
 
 function renderPie(rows, mode){

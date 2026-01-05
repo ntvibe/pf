@@ -33,6 +33,7 @@ const chartTimelineEl = document.getElementById("chartTimeline");
 const chartMode = document.getElementById("chartMode");
 const chartPages = document.getElementById("chartPages");
 const chartDots = document.getElementById("chartDots");
+const chartToggleBtn = document.getElementById("chartToggleBtn");
 const versionIndicator = document.getElementById("versionIndicator");
 
 const categoryFilterSelect = document.getElementById("categoryFilter");
@@ -774,6 +775,7 @@ initChart({
   modeSelectEl: chartMode,
   pagesElement: chartPages,
   dotsElement: chartDots,
+  toggleButtonEl: chartToggleBtn,
   onModeChange: () => renderChart(getFilteredRows())
 });
 
