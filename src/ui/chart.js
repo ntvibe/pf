@@ -7,8 +7,10 @@ let modeSelect = null;
 let pagesEl = null;
 let dotsEl = null;
 let toggleButtonEl = null;
+let totalToggleEl = null;
 let currentPage = 0;
 let lastRows = [];
+let showTimelineTotal = true;
 let resizeHandlerAttached = false;
 let transitionHandlerAttached = false;
 
@@ -19,6 +21,7 @@ export function initChart({
   pagesElement,
   dotsElement,
   toggleButtonEl: toggleButtonElement,
+  timelineTotalToggleEl,
   onModeChange
 }){
   if(!pieEl || !timelineEl || typeof echarts === "undefined") return;
@@ -76,6 +79,14 @@ export function initChart({
     });
   }
 
+  if(timelineTotalToggleEl && !totalToggleEl){
+    totalToggleEl = timelineTotalToggleEl;
+    totalToggleEl.addEventListener("click", () => {
+      setTimelineTotalVisible(!showTimelineTotal);
+    });
+    updateTotalToggle();
+  }
+
   updateToggleButton();
 }
 
@@ -85,6 +96,7 @@ function setupPager(container){
   let dragging = false;
   let pointerId = null;
   const supportsPointer = "PointerEvent" in window;
+  const isChartTarget = (event) => event.target.closest(".chart");
 
   const handleSwipe = (dx, dy) => {
     if(Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
@@ -98,6 +110,7 @@ function setupPager(container){
   if(supportsPointer){
     container.addEventListener("pointerdown", (event) => {
       if(event.pointerType === "mouse" && event.button !== 0) return;
+      if(isChartTarget(event)) return;
       startX = event.clientX;
       startY = event.clientY;
       pointerId = event.pointerId;
@@ -129,6 +142,7 @@ function setupPager(container){
     container.addEventListener("touchstart", (event) => {
       const touch = event.touches[0];
       if(!touch) return;
+      if(isChartTarget(event)) return;
       startX = touch.clientX;
       startY = touch.clientY;
       dragging = true;
@@ -184,6 +198,20 @@ function updateToggleButton(){
   const isTimeline = currentPage === 1;
   toggleButtonEl.textContent = isTimeline ? "Pie chart" : "Timeline";
   toggleButtonEl.setAttribute("aria-label", isTimeline ? "Show pie chart" : "Show timeline");
+}
+
+function updateTotalToggle(){
+  if(!totalToggleEl) return;
+  totalToggleEl.classList.toggle("active", showTimelineTotal);
+  totalToggleEl.setAttribute("aria-pressed", String(showTimelineTotal));
+}
+
+function setTimelineTotalVisible(nextValue){
+  showTimelineTotal = Boolean(nextValue);
+  updateTotalToggle();
+  if(lastRows.length){
+    renderTimeline(lastRows, modeSelect?.value);
+  }
 }
 
 function renderPie(rows, mode){
@@ -263,7 +291,7 @@ function renderPie(rows, mode){
 function renderTimeline(rows, mode){
   if(!timelineChart) return;
   const currentMode = mode || modeSelect?.value || "category";
-  const timelineData = buildTimelineSeries(currentMode, rows);
+  const timelineData = buildTimelineSeries(currentMode, rows, { includeTotal: showTimelineTotal });
   const dates = timelineData.dates;
   const seriesData = timelineData.series;
 
@@ -296,6 +324,17 @@ function renderTimeline(rows, mode){
       axisLabel: { color: "#64748b" },
       splitLine: { lineStyle: { color: "#e2e8f0" } }
     },
+    dataZoom: [
+      {
+        type: "inside",
+        xAxisIndex: 0,
+        filterMode: "none",
+        zoomOnMouseWheel: true,
+        moveOnMouseWheel: true,
+        moveOnMouseMove: true,
+        preventDefaultMouseMove: true
+      }
+    ],
     series: seriesData.map((entry) => ({
       name: entry.name,
       type: "line",
