@@ -63,44 +63,82 @@ function setupPager(container){
   let startX = 0;
   let startY = 0;
   let dragging = false;
+  let pointerId = null;
+  const supportsPointer = "PointerEvent" in window;
 
-  container.addEventListener("touchstart", (event) => {
-    const touch = event.touches[0];
-    if(!touch) return;
-    startX = touch.clientX;
-    startY = touch.clientY;
-    dragging = true;
-  }, { passive: true });
-
-  container.addEventListener("touchmove", (event) => {
-    if(!dragging) return;
-    const touch = event.touches[0];
-    if(!touch) return;
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
-    if(Math.abs(dx) > Math.abs(dy)){
-      event.preventDefault();
-    }
-  }, { passive: false });
-
-  container.addEventListener("touchend", (event) => {
-    if(!dragging) return;
-    dragging = false;
-    const touch = event.changedTouches[0];
-    if(!touch) return;
-    const dx = touch.clientX - startX;
-    const dy = touch.clientY - startY;
+  const handleSwipe = (dx, dy) => {
     if(Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
     if(dx < 0){
       setPage(Math.min(1, currentPage + 1));
     }else{
       setPage(Math.max(0, currentPage - 1));
     }
-  });
+  };
+
+  if(supportsPointer){
+    container.addEventListener("pointerdown", (event) => {
+      if(event.pointerType === "mouse" && event.button !== 0) return;
+      startX = event.clientX;
+      startY = event.clientY;
+      pointerId = event.pointerId;
+      dragging = true;
+      container.setPointerCapture(pointerId);
+    });
+
+    container.addEventListener("pointermove", (event) => {
+      if(!dragging || event.pointerId !== pointerId) return;
+      const dx = event.clientX - startX;
+      const dy = event.clientY - startY;
+      if(Math.abs(dx) > Math.abs(dy)){
+        event.preventDefault();
+      }
+    }, { passive: false });
+
+    container.addEventListener("pointerup", (event) => {
+      if(!dragging || event.pointerId !== pointerId) return;
+      dragging = false;
+      container.releasePointerCapture(pointerId);
+      handleSwipe(event.clientX - startX, event.clientY - startY);
+    });
+
+    container.addEventListener("pointercancel", () => {
+      dragging = false;
+      pointerId = null;
+    });
+  }else{
+    container.addEventListener("touchstart", (event) => {
+      const touch = event.touches[0];
+      if(!touch) return;
+      startX = touch.clientX;
+      startY = touch.clientY;
+      dragging = true;
+    }, { passive: true });
+
+    container.addEventListener("touchmove", (event) => {
+      if(!dragging) return;
+      const touch = event.touches[0];
+      if(!touch) return;
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      if(Math.abs(dx) > Math.abs(dy)){
+        event.preventDefault();
+      }
+    }, { passive: false });
+
+    container.addEventListener("touchend", (event) => {
+      if(!dragging) return;
+      dragging = false;
+      const touch = event.changedTouches[0];
+      if(!touch) return;
+      handleSwipe(touch.clientX - startX, touch.clientY - startY);
+    });
+  }
 }
 
 function setPage(index){
-  currentPage = index;
+  const clamped = Math.max(0, Math.min(1, index));
+  if(clamped === currentPage) return;
+  currentPage = clamped;
   if(pagesEl){
     pagesEl.style.transform = `translateX(-${index * 100}%)`;
   }
