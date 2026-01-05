@@ -277,23 +277,64 @@ export function buildChartData(mode, inputRows = rows){
   return sorted.map(([name, value]) => ({ name, value }));
 }
 
-export function buildTimelineSeries(inputRows = rows){
-  const map = new Map();
+export function buildTimelineSeries(mode = "total", inputRows = rows){
+  const dateMap = new Map();
+  const groupTotals = new Map();
+  const useGroups = mode === "category" || mode === "subcategory";
+
   for(const row of inputRows){
     const value = toNumber(row.Value);
     if(!Number.isFinite(value)) continue;
     const date = parseRowDate(row);
     if(!date) continue;
     const key = date.toISOString().slice(0, 10);
-    map.set(key, (map.get(key) || 0) + value);
+    let entry = dateMap.get(key);
+    if(!entry){
+      entry = { total: 0, groups: new Map() };
+      dateMap.set(key, entry);
+    }
+    entry.total += value;
+
+    if(useGroups){
+      const group = mode === "subcategory"
+        ? (String(row.Subcategory ?? "").trim() || "Uncategorized")
+        : (String(row.Category ?? "").trim() || "Uncategorized");
+      entry.groups.set(group, (entry.groups.get(group) || 0) + value);
+      groupTotals.set(group, (groupTotals.get(group) || 0) + Math.abs(value));
+    }
   }
+
+  const dates = [...dateMap.keys()].sort((a, b) => a.localeCompare(b));
   let runningTotal = 0;
-  return [...map.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, value]) => {
-      runningTotal += value;
-      return { date, value: runningTotal };
-    });
+  const totalSeries = dates.map((date) => {
+    const entry = dateMap.get(date);
+    runningTotal += entry ? entry.total : 0;
+    return runningTotal;
+  });
+
+  const series = [
+    { name: "Total", data: totalSeries, isTotal: true }
+  ];
+
+  if(useGroups){
+    const topGroups = [...groupTotals.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([group]) => group);
+
+    for(const group of topGroups){
+      let runningGroupTotal = 0;
+      const data = dates.map((date) => {
+        const entry = dateMap.get(date);
+        const value = entry ? (entry.groups.get(group) || 0) : 0;
+        runningGroupTotal += value;
+        return runningGroupTotal;
+      });
+      series.push({ name: group, data });
+    }
+  }
+
+  return { dates, series };
 }
 
 export function loadCache(){
