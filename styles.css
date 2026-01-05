@@ -308,6 +308,60 @@ body{
   padding:16px;
 }
 
+.list-group{
+  border:1px solid var(--border);
+  border-radius:16px;
+  background:var(--surface);
+  overflow:hidden;
+}
+.list-summary{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 14px;
+  cursor:pointer;
+  list-style:none;
+}
+.list-summary::marker{
+  content:"";
+}
+.list-summary::-webkit-details-marker{
+  display:none;
+}
+.list-summary-text{
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+.list-title{
+  font-size:15px;
+  font-weight:600;
+}
+.list-meta{
+  font-size:12px;
+  color:var(--muted);
+}
+.list-total{
+  font-weight:700;
+  font-size:14px;
+  white-space:nowrap;
+}
+.list-chevron{
+  color:var(--muted);
+  transition:transform 0.2s ease;
+}
+.list-content{
+  padding:12px 14px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  border-top:1px solid var(--border);
+}
+.list-group[open] > summary .list-chevron{
+  transform:rotate(180deg);
+}
+
 .transaction-row{
   border:1px solid var(--border);
   border-radius:16px;
@@ -504,6 +558,29 @@ body{
   align-items:center;
   gap:10px;
 }
+.transaction-summary::marker{
+  content:"";
+}
+.transaction-summary::-webkit-details-marker{
+  display:none;
+}
+.transaction-details{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  font-size:13px;
+  color:var(--muted);
+}
+.transaction-meta-row{
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+  color:var(--muted);
+  font-size:12px;
+}
+.transaction-card[open] > summary .list-chevron{
+  transform:rotate(180deg);
+}
 .entry-toggle{
   border:none;
   background:var(--accent-weak);
@@ -677,6 +754,25 @@ input.invalid{
 .fab:disabled{
   opacity:0.5;
   cursor:not-allowed;
+}
+
+.version-indicator{
+  position:fixed;
+  left:14px;
+  bottom:calc(14px + env(safe-area-inset-bottom));
+  font-size:11px;
+  color:var(--muted);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:4px 8px;
+  opacity:0;
+  pointer-events:none;
+  transition:opacity 0.2s ease;
+  z-index:8;
+}
+.version-indicator.visible{
+  opacity:0.7;
 }
 
 @media (min-width: 720px){

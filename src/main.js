@@ -1,5 +1,5 @@
 import { apiGet, apiPost } from "./api.js";
-import { STORAGE_LAST_CATEGORY, STORAGE_LAST_SUBCATEGORY, STORAGE_THEME } from "./config.js";
+import { APP_VERSION, STORAGE_LAST_CATEGORY, STORAGE_LAST_SUBCATEGORY, STORAGE_THEME } from "./config.js";
 import { clearApiUrl, getStoredApiUrl, isValidAppsScriptUrl, setApiUrl } from "./storage.js";
 import {
   rows,
@@ -31,6 +31,7 @@ const chartTimelineEl = document.getElementById("chartTimeline");
 const chartMode = document.getElementById("chartMode");
 const chartPages = document.getElementById("chartPages");
 const chartDots = document.getElementById("chartDots");
+const versionIndicator = document.getElementById("versionIndicator");
 
 const categoryFilterSelect = document.getElementById("categoryFilter");
 const subcategoryFilterSelect = document.getElementById("subcategoryFilter");
@@ -57,10 +58,11 @@ const transactionNoteInput = document.getElementById("transactionNoteInput");
 let syncState = "Idle";
 let statusNote = "";
 let syncTimer = null;
-let selectedCategory = "";
 let selectedSubcategory = "All";
 
 const NEW_OPTION_VALUE = "__new__";
+const ALL_CATEGORIES = "__all__";
+let selectedCategory = ALL_CATEGORIES;
 
 function formatTime(ts){
   if(!ts) return "";
@@ -140,12 +142,16 @@ function renderFilters(){
   }
 
   categoryFilterSelect.disabled = false;
-  categoryFilterSelect.innerHTML = categories.map((category) => (
-    `<option value="${esc(category)}">${esc(category)}</option>`
-  )).join("");
+  const options = [
+    `<option value="${ALL_CATEGORIES}">All categories</option>`,
+    ...categories.map((category) => (
+      `<option value="${esc(category)}">${esc(category)}</option>`
+    ))
+  ];
+  categoryFilterSelect.innerHTML = options.join("");
 
-  if(!categories.includes(selectedCategory)){
-    selectedCategory = categories[0];
+  if(selectedCategory !== ALL_CATEGORIES && !categories.includes(selectedCategory)){
+    selectedCategory = ALL_CATEGORIES;
   }
   categoryFilterSelect.value = selectedCategory;
 
@@ -153,6 +159,13 @@ function renderFilters(){
 }
 
 function updateSubcategoryFilter(){
+  if(selectedCategory === ALL_CATEGORIES){
+    subcategoryFilterSelect.disabled = true;
+    selectedSubcategory = "All";
+    subcategoryFilterSelect.innerHTML = `<option value="All">All</option>`;
+    subcategoryFilterSelect.value = "All";
+    return;
+  }
   const subcategories = getSubcategories(selectedCategory, rows);
   subcategoryFilterSelect.disabled = false;
   const options = ["All", ...subcategories];
@@ -166,16 +179,22 @@ function updateSubcategoryFilter(){
   subcategoryFilterSelect.value = selectedSubcategory;
 }
 
+function getFilteredRows(){
+  if(!selectedCategory || selectedCategory === ALL_CATEGORIES) return rows;
+  return getFilteredTransactions(selectedCategory, selectedSubcategory, rows);
+}
+
 function renderAll(){
   renderFilters();
-  const filteredRows = selectedCategory
-    ? getFilteredTransactions(selectedCategory, selectedSubcategory, rows)
-    : [];
+  const filteredRows = getFilteredRows();
+  const activeCategory = selectedCategory === ALL_CATEGORIES ? "" : selectedCategory;
   renderHeader(filteredRows);
   renderChart(filteredRows);
   renderList(filteredRows, {
     root: listRoot,
-    onDelete: deleteRowById
+    onDelete: deleteRowById,
+    activeCategory,
+    activeSubcategory: selectedSubcategory
   });
 }
 
@@ -259,9 +278,10 @@ function openTransactionDialog(){
   transactionCategorySelect.innerHTML = buildCategoryOptions();
 
   const lastCategory = localStorage.getItem(STORAGE_LAST_CATEGORY) || "";
+  const fallbackCategory = selectedCategory === ALL_CATEGORIES ? "" : selectedCategory;
   const defaultCategory = categories.includes(lastCategory)
     ? lastCategory
-    : (selectedCategory || categories[0] || "");
+    : (fallbackCategory || categories[0] || "");
 
   if(defaultCategory){
     transactionCategorySelect.value = defaultCategory;
@@ -589,8 +609,13 @@ if(transactionDialogForm){
       note
     });
 
-    selectedCategory = categoryValue;
-    selectedSubcategory = subcategoryValue || "All";
+    if(selectedCategory !== ALL_CATEGORIES){
+      selectedCategory = categoryValue;
+      selectedSubcategory = subcategoryValue || "All";
+    }else{
+      selectedCategory = ALL_CATEGORIES;
+      selectedSubcategory = "All";
+    }
     localStorage.setItem(STORAGE_LAST_CATEGORY, categoryValue);
     if(subcategoryValue){
       localStorage.setItem(STORAGE_LAST_SUBCATEGORY, subcategoryValue);
@@ -618,8 +643,17 @@ initChart({
   modeSelectEl: chartMode,
   pagesElement: chartPages,
   dotsElement: chartDots,
-  onModeChange: () => renderChart(getFilteredTransactions(selectedCategory, selectedSubcategory, rows))
+  onModeChange: () => renderChart(getFilteredRows())
 });
+
+if(versionIndicator){
+  versionIndicator.textContent = `v${APP_VERSION}`;
+  const updateIndicator = () => {
+    versionIndicator.classList.toggle("visible", window.scrollY > 80);
+  };
+  updateIndicator();
+  window.addEventListener("scroll", updateIndicator, { passive: true });
+}
 
 if("serviceWorker" in navigator){
   const isLocalhost = location.hostname === "localhost" || location.hostname === "127.0.0.1";
