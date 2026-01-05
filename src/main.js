@@ -9,6 +9,7 @@ import {
   meta,
   setMeta,
   normalizeRow,
+  normalizeRowsFromApi,
   computeTotal,
   getCategories,
   getSubcategories,
@@ -425,7 +426,13 @@ async function refreshFromServer({ allowReplaceWhenDirty = false } = {}){
     const data = await apiGet();
     setMeta({ lastLoadAt: Date.now() });
 
-    const normalized = data.map((r) => normalizeRow(r));
+    const normalized = normalizeRowsFromApi(data);
+    const suspiciousEmpty = normalized?.length === 0 && rows.length && data.length > 0;
+    if(!normalized || suspiciousEmpty){
+      setSyncState("Error");
+      setStatus("Unexpected response; keeping local data.");
+      return false;
+    }
     setRows(normalized);
 
     saveCache();

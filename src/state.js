@@ -55,6 +55,53 @@ export function normalizeRow(rawRow){
   };
 }
 
+function isMeaningfulRow(row){
+  const fields = [
+    row.ID,
+    row.Category,
+    row.Subcategory,
+    row.Date,
+    row.Amount,
+    row.Note,
+    row.Currency,
+    row.UpdatedAt
+  ];
+  return fields.some((value) => String(value ?? "").trim() !== "");
+}
+
+export function normalizeRowsFromApi(data){
+  if(!Array.isArray(data)) return null;
+  if(!data.length) return [];
+
+  const first = data[0];
+  if(first && typeof first === "object" && !Array.isArray(first)){
+    const normalized = data.map((row) => normalizeRow(row));
+    return normalized.filter(isMeaningfulRow);
+  }
+
+  if(Array.isArray(first)){
+    const header = first.map((value) => String(value ?? "").trim());
+    const headerIndex = new Map(header.map((name, idx) => [name, idx]));
+    const columnNames = Object.values(COLUMN_NAMES);
+    const hasKnownHeader = columnNames.some((name) => headerIndex.has(name));
+    if(!hasKnownHeader) return null;
+
+    const normalized = data.slice(1).map((row) => {
+      const obj = {};
+      for(const name of columnNames){
+        const idx = headerIndex.get(name);
+        if(idx != null && idx < row.length){
+          obj[name] = row[idx];
+        }
+      }
+      return normalizeRow(obj);
+    });
+    return normalized.filter(isMeaningfulRow);
+  }
+
+  return null;
+}
+
 export function parseRowDate(row){
   const raw = String(row.Date ?? row.UpdatedAt ?? "").trim();
   if(!raw) return null;
