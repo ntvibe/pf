@@ -9,6 +9,9 @@
   --border:#e2e8f0;
   --danger:#b91c1c;
   --shadow:0 8px 24px rgba(15, 23, 42, 0.08);
+  --neumorph-radius:32px;
+  --neumorph-bg:linear-gradient(145deg, #cacaca, #f0f0f0);
+  --neumorph-shadow:16px 16px 32px #a4a4a4, -16px -16px 32px #ffffff;
 }
 :root[data-theme="light"]{
   color-scheme: light;
@@ -21,6 +24,9 @@
   --border:#e2e8f0;
   --danger:#b91c1c;
   --shadow:0 8px 24px rgba(15, 23, 42, 0.08);
+  --neumorph-radius:32px;
+  --neumorph-bg:linear-gradient(145deg, #cacaca, #f0f0f0);
+  --neumorph-shadow:16px 16px 32px #a4a4a4, -16px -16px 32px #ffffff;
 }
 :root[data-theme="dark"]{
   color-scheme: dark;
@@ -33,6 +39,9 @@
   --border:#1f2937;
   --danger:#f87171;
   --shadow:0 8px 24px rgba(2, 6, 23, 0.45);
+  --neumorph-radius:32px;
+  --neumorph-bg:linear-gradient(145deg, #171b1e, #1b2023);
+  --neumorph-shadow:16px 16px 32px #0a0c0d, -16px -16px 32px #283035;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme]),
@@ -47,6 +56,9 @@
     --border:#1f2937;
     --danger:#f87171;
     --shadow:0 8px 24px rgba(2, 6, 23, 0.45);
+    --neumorph-radius:32px;
+    --neumorph-bg:linear-gradient(145deg, #171b1e, #1b2023);
+    --neumorph-shadow:16px 16px 32px #0a0c0d, -16px -16px 32px #283035;
   }
 }
 *{box-sizing:border-box}
@@ -156,9 +168,9 @@ body{
   padding:16px;
 }
 .panel{
-  background:var(--surface);
-  border-radius:20px;
-  box-shadow:var(--shadow);
+  background:var(--neumorph-bg);
+  border-radius:var(--neumorph-radius);
+  box-shadow:var(--neumorph-shadow);
   overflow:hidden;
 }
 .panel-header{
@@ -326,8 +338,9 @@ body{
 
 .list-group{
   border:1px solid var(--border);
-  border-radius:16px;
-  background:var(--surface);
+  border-radius:var(--neumorph-radius);
+  background:var(--neumorph-bg);
+  box-shadow:var(--neumorph-shadow);
   overflow:hidden;
 }
 .list-summary{
@@ -380,13 +393,14 @@ body{
 
 .transaction-row{
   border:1px solid var(--border);
-  border-radius:16px;
+  border-radius:var(--neumorph-radius);
   padding:12px 14px;
   display:flex;
   align-items:flex-start;
   gap:12px;
   justify-content:space-between;
-  background:var(--surface);
+  background:var(--neumorph-bg);
+  box-shadow:var(--neumorph-shadow);
 }
 
 .transaction-main{
@@ -441,8 +455,9 @@ body{
 }
 .type-group{
   border:1px solid var(--border);
-  border-radius:18px;
-  background:var(--surface);
+  border-radius:var(--neumorph-radius);
+  background:var(--neumorph-bg);
+  box-shadow:var(--neumorph-shadow);
   overflow:hidden;
 }
 .type-group-header{
@@ -484,8 +499,9 @@ body{
 }
 .asset-card{
   border:1px solid var(--border);
-  border-radius:16px;
-  background:var(--surface);
+  border-radius:var(--neumorph-radius);
+  background:var(--neumorph-bg);
+  box-shadow:var(--neumorph-shadow);
   overflow:hidden;
 }
 .asset-card-header{
@@ -562,12 +578,13 @@ body{
 }
 .transaction-card{
   border:1px solid var(--border);
-  border-radius:16px;
+  border-radius:var(--neumorph-radius);
   padding:12px;
   display:flex;
   flex-direction:column;
   gap:10px;
-  background:var(--surface);
+  background:var(--neumorph-bg);
+  box-shadow:var(--neumorph-shadow);
 }
 .transaction-summary{
   display:flex;
@@ -711,9 +728,9 @@ input.invalid{
   border:none;
   padding:0;
   width:min(92vw, 420px);
-  border-radius:18px;
-  background:var(--surface);
-  box-shadow:0 24px 48px rgba(15, 23, 42, 0.25);
+  border-radius:var(--neumorph-radius);
+  background:var(--neumorph-bg);
+  box-shadow:var(--neumorph-shadow);
 }
 .modal::backdrop{
   background:rgba(15, 23, 42, 0.4);
@@ -742,9 +759,9 @@ input.invalid{
 
 .bottom-toolbar{
   padding:12px 0 calc(12px + env(safe-area-inset-bottom));
-  background:var(--surface);
+  background:var(--neumorph-bg);
   border-top:1px solid var(--border);
-  box-shadow:0 -8px 24px rgba(15, 23, 42, 0.08);
+  box-shadow:var(--neumorph-shadow);
   margin-top:8px;
 }
 .toolbar-inner{
@@ -805,15 +822,16 @@ input.invalid{
   bottom:calc(16px + env(safe-area-inset-bottom));
   font-size:11px;
   color:var(--muted);
-  background:var(--surface);
+  background:var(--neumorph-bg);
   border:1px solid var(--border);
-  border-radius:10px;
+  border-radius:var(--neumorph-radius);
   padding:4px 8px;
   opacity:0;
   transition:opacity 0.2s ease;
   margin:0;
   width:max-content;
   z-index:5;
+  box-shadow:var(--neumorph-shadow);
 }
 .version-indicator.visible{
   opacity:0.7;
