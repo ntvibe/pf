@@ -267,11 +267,11 @@ body{
 .chart-page{
   flex:0 0 100%;
   width:100%;
-  padding:8px 16px 16px;
+  padding:8px 12px 16px;
   box-sizing:border-box;
 }
 .chart{
-  height:300px;
+  height:320px;
   width:100%;
 }
 .chart-subtitle{

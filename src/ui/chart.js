@@ -52,7 +52,6 @@ export function initChart({
   dotsEl = dotsElement || dotsEl;
 
   if(pagesEl){
-    setupPager(pagesEl);
     if(!transitionHandlerAttached){
       pagesEl.addEventListener("transitionend", (event) => {
         if(event.propertyName !== "transform") return;
@@ -88,85 +87,6 @@ export function initChart({
   }
 
   updateToggleButton();
-}
-
-function setupPager(container){
-  let startX = 0;
-  let startY = 0;
-  let dragging = false;
-  let pointerId = null;
-  const supportsPointer = "PointerEvent" in window;
-  const isChartTarget = (event) => event.target.closest(".chart");
-
-  const handleSwipe = (dx, dy) => {
-    if(Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy)) return;
-    if(dx < 0){
-      setPage(Math.min(1, currentPage + 1));
-    }else{
-      setPage(Math.max(0, currentPage - 1));
-    }
-  };
-
-  if(supportsPointer){
-    container.addEventListener("pointerdown", (event) => {
-      if(event.pointerType === "mouse" && event.button !== 0) return;
-      if(isChartTarget(event)) return;
-      startX = event.clientX;
-      startY = event.clientY;
-      pointerId = event.pointerId;
-      dragging = true;
-      container.setPointerCapture(pointerId);
-    });
-
-    container.addEventListener("pointermove", (event) => {
-      if(!dragging || event.pointerId !== pointerId) return;
-      const dx = event.clientX - startX;
-      const dy = event.clientY - startY;
-      if(Math.abs(dx) > Math.abs(dy)){
-        event.preventDefault();
-      }
-    }, { passive: false });
-
-    container.addEventListener("pointerup", (event) => {
-      if(!dragging || event.pointerId !== pointerId) return;
-      dragging = false;
-      container.releasePointerCapture(pointerId);
-      handleSwipe(event.clientX - startX, event.clientY - startY);
-    });
-
-    container.addEventListener("pointercancel", () => {
-      dragging = false;
-      pointerId = null;
-    });
-  }else{
-    container.addEventListener("touchstart", (event) => {
-      const touch = event.touches[0];
-      if(!touch) return;
-      if(isChartTarget(event)) return;
-      startX = touch.clientX;
-      startY = touch.clientY;
-      dragging = true;
-    }, { passive: true });
-
-    container.addEventListener("touchmove", (event) => {
-      if(!dragging) return;
-      const touch = event.touches[0];
-      if(!touch) return;
-      const dx = touch.clientX - startX;
-      const dy = touch.clientY - startY;
-      if(Math.abs(dx) > Math.abs(dy)){
-        event.preventDefault();
-      }
-    }, { passive: false });
-
-    container.addEventListener("touchend", (event) => {
-      if(!dragging) return;
-      dragging = false;
-      const touch = event.changedTouches[0];
-      if(!touch) return;
-      handleSwipe(touch.clientX - startX, touch.clientY - startY);
-    });
-  }
 }
 
 function setPage(index){
@@ -265,10 +185,11 @@ function renderPie(rows, mode){
       {
         name: "Allocation",
         type: "pie",
-        radius: ["55%", "78%"],
-        center: ["50%", "45%"],
+        radius: ["50%", "72%"],
+        center: ["50%", "48%"],
         padAngle: 2,
         avoidLabelOverlap: true,
+        labelLayout: { hideOverlap: true },
         itemStyle: { borderRadius: 8, borderColor: "#fff", borderWidth: 2 },
         label: {
           show: true,
@@ -277,6 +198,7 @@ function renderPie(rows, mode){
             return `${p.name}\n${pct}%`;
           }
         },
+        labelLine: { length: 10, length2: 6 },
         emphasis: {
           scale: true,
           scaleSize: 10,
@@ -311,7 +233,7 @@ function renderTimeline(rows, mode){
       left: 0,
       right: 0
     },
-    grid: { top: 52, left: 12, right: 18, bottom: 30, containLabel: true },
+    grid: { top: 56, left: 20, right: 20, bottom: 34, containLabel: true },
     xAxis: {
       type: "category",
       data: dates,
