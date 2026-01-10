@@ -314,6 +314,15 @@ body{
   gap:8px;
   padding:8px 0 4px;
 }
+
+@media (max-width: 540px){
+  .chart-page{
+    padding:12px 12px 18px;
+  }
+  .chart{
+    height:380px;
+  }
+}
 .filter-chip{
   border:1px solid var(--border);
   background:transparent;
